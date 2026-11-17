@@ -27,6 +27,18 @@ SET n.deleted_at = datetime()
 RETURN count(n) AS cnt
 """
 
+# Incremental ingests only re-process some files, so the sweep must be limited to those files:
+# nodes of untouched files legitimately keep an older ``last_seen_commit``.
+_SOFT_DELETE_NODES_IN_FILES = """
+MATCH (n:CodeNode {repo: $repo})
+WHERE n.filePath IN $file_paths
+  AND n.last_seen_commit IS NOT NULL
+  AND n.last_seen_commit <> $current_commit
+  AND n.deleted_at IS NULL
+SET n.deleted_at = datetime()
+RETURN count(n) AS cnt
+"""
+
 _MARK_LAST_SEEN = """
 MATCH (n:CodeNode {repo: $repo})
 WHERE n.filePath IN $file_paths
@@ -113,8 +125,13 @@ async def soft_delete_orphans(
     client: Neo4jClient,
     repo_slug: str,
     current_commit: str,
+    file_paths: Optional[list[str]] = None,
 ) -> int:
     """Soft-delete nodes whose ``last_seen_commit`` != *current_commit*.
+
+    With *file_paths* (an incremental ingest) only nodes of those files are considered: that
+    removes symbols that disappeared from a file that was re-processed, without touching the
+    files that were deliberately not re-processed. Deleted *files* are handled from the diff.
 
     Sets ``deleted_at`` on each orphaned node so it is excluded from
     normal queries (which filter ``WHERE n.deleted_at IS NULL``) but
@@ -124,15 +141,23 @@ async def soft_delete_orphans(
         client: Neo4j client.
         repo_slug: Repository slug to scope the cleanup.
         current_commit: SHA of the just-ingested commit.
+        file_paths: Restrict the sweep to nodes of these files (incremental ingests); None
+            sweeps the whole repository (full ingests).
 
     Returns:
         Number of nodes soft-deleted.
     """
     try:
-        rows = await client.execute_query(
-            _SOFT_DELETE_NODES,
-            {"repo": repo_slug, "current_commit": current_commit},
-        )
+        if file_paths is None:
+            rows = await client.execute_query(
+                _SOFT_DELETE_NODES,
+                {"repo": repo_slug, "current_commit": current_commit},
+            )
+        else:
+            rows = await client.execute_query(
+                _SOFT_DELETE_NODES_IN_FILES,
+                {"repo": repo_slug, "current_commit": current_commit, "file_paths": file_paths},
+            )
         cnt = rows[0]["cnt"] if rows else 0
         if cnt:
             logger.info(f"Soft-deleted {cnt} orphaned nodes for repo={repo_slug}")

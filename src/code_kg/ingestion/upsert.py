@@ -171,6 +171,7 @@ async def upsert_node(client: Neo4jClient, node: NormalizedNode) -> bool:
         n.fileHash      = $file_hash,
         n.lineRange     = $line_range,
         n.layer         = $layer,
+        n.deleted_at    = null,
         n.updated_at    = datetime()
     {extra_label_clause}
     RETURN n.id AS id
@@ -391,6 +392,7 @@ async def _upsert_nodes_unwind(
             n.fileHash      = row.fileHash,
             n.lineRange     = row.lineRange,
             n.layer         = row.layer,
+            n.deleted_at    = null,
             n.updated_at    = datetime()
         SET n:{cross_label}
         RETURN count(n) AS written
@@ -767,6 +769,7 @@ async def normalize_and_upsert(
     raw_edges: list[RawEdge],
     repo_slug: Optional[str] = None,
     changed_files: Optional[set[str]] = None,
+    seen_commit: Optional[str] = None,
 ) -> tuple[int, int]:
     """Normalize and upsert a batch of raw nodes and edges.
 
@@ -782,6 +785,9 @@ async def normalize_and_upsert(
         raw_nodes: List of raw nodes to process.
         raw_edges: List of raw edges to process.
         repo_slug: Optional repository slug.
+        seen_commit: If given, stamp ``last_seen_commit`` on exactly the nodes upserted here.
+            Stamping by node (not by file path) is what lets a symbol deleted from a file that
+            still exists look orphaned on the next sweep.
 
     Returns:
         Tuple of (nodes_upserted, edges_upserted).
@@ -803,6 +809,11 @@ async def normalize_and_upsert(
 
     # ── Upsert nodes (+ structural edges) ────────────────────────────────────
     nodes_upserted = await upsert_nodes_batch(client, normalized_nodes)
+    if seen_commit and normalized_nodes:
+        await client.execute_query(
+            "MATCH (n) WHERE n.id IN $ids SET n.last_seen_commit = $commit",
+            {"ids": [n.id for n in normalized_nodes], "commit": seen_commit},
+        )
 
     # ── Resolve IMPORTS edges (create Module placeholder nodes first) ─────────
     edges_upserted = 0

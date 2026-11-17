@@ -16,7 +16,7 @@ from typing import Optional
 
 from code_kg.domain.models import IngestRepoOutput, RawEdge, RawNode
 from code_kg.graph.client import Neo4jClient
-from code_kg.ingestion.cleanup import mark_files_seen, soft_delete_orphans, update_repo_meta
+from code_kg.ingestion.cleanup import soft_delete_orphans, update_repo_meta
 from code_kg.ingestion.sources.code_csharp import CSharpSource
 from code_kg.ingestion.sources.code_go import GoSource
 from code_kg.ingestion.sources.code_java import JavaSource
@@ -124,6 +124,8 @@ async def _collect_from_source(
     files: list[str],
     nodes: list,
     edges: list,
+    progress=None,
+    seen: Optional[set] = None,
 ) -> None:
     """Drain a source's async iterator into nodes/edges lists.
 
@@ -137,6 +139,11 @@ async def _collect_from_source(
     async for item in source.extract(repo_path, files):
         if isinstance(item, RawNode):
             nodes.append(item)
+            if progress is not None and seen is not None:
+                fp = getattr(item, "file_path", None)
+                if fp and fp not in seen:
+                    seen.add(fp)
+                    progress.file_done()
         else:
             edges.append(item)
 
@@ -144,6 +151,7 @@ async def _collect_from_source(
 async def extract_files(
     repo_path: Path,
     files: list[str],
+    progress=None,
 ) -> tuple[list[RawNode], list[RawEdge]]:
     """Run tree-sitter extraction on all *files*, routing by extension.
 
@@ -154,12 +162,15 @@ async def extract_files(
     Args:
         repo_path: Repository root.
         files: Relative file paths to extract.
+        progress: Optional progress sink; ``file_done()`` fires once per file
+            as its first node is produced.
 
     Returns:
         Tuple of (all_nodes, all_edges).
     """
     all_nodes: list[RawNode] = []
     all_edges: list[RawEdge] = []
+    seen: set[str] = set()
 
     ts_files = [f for f in files if f.endswith((".ts", ".tsx", ".js", ".jsx"))]
     cs_files = [f for f in files if f.endswith(".cs")]
@@ -171,16 +182,16 @@ async def extract_files(
     # Run all code sources concurrently
     tasks = []
     if ts_files:
-        tasks.append(_collect_from_source(TypeScriptSource(), str(repo_path), ts_files, all_nodes, all_edges))
+        tasks.append(_collect_from_source(TypeScriptSource(), str(repo_path), ts_files, all_nodes, all_edges, progress, seen))
     if cs_files:
-        tasks.append(_collect_from_source(CSharpSource(), str(repo_path), cs_files, all_nodes, all_edges))
+        tasks.append(_collect_from_source(CSharpSource(), str(repo_path), cs_files, all_nodes, all_edges, progress, seen))
     if java_files:
-        tasks.append(_collect_from_source(JavaSource(), str(repo_path), java_files, all_nodes, all_edges))
+        tasks.append(_collect_from_source(JavaSource(), str(repo_path), java_files, all_nodes, all_edges, progress, seen))
 
     if py_files:
-        tasks.append(_collect_from_source(PythonSource(), str(repo_path), py_files, all_nodes, all_edges))
+        tasks.append(_collect_from_source(PythonSource(), str(repo_path), py_files, all_nodes, all_edges, progress, seen))
     if go_files:
-        tasks.append(_collect_from_source(GoSource(), str(repo_path), go_files, all_nodes, all_edges))
+        tasks.append(_collect_from_source(GoSource(), str(repo_path), go_files, all_nodes, all_edges, progress, seen))
 
     if tasks:
         await asyncio.gather(*tasks)
@@ -192,6 +203,10 @@ async def extract_files(
         async for item in md_source.extract(str(repo_path), md_files, symbol_names=symbol_names):
             if isinstance(item, RawNode):
                 all_nodes.append(item)
+                fp = getattr(item, "file_path", None)
+                if progress is not None and fp and fp not in seen:
+                    seen.add(fp)
+                    progress.file_done()
             else:
                 all_edges.append(item)
 
@@ -208,6 +223,7 @@ async def run_pipeline(
     changed_files: Optional[set[str]] = None,
     do_soft_delete: bool = True,
     exclude_patterns: Optional[list[str]] = None,
+    progress=None,
 ) -> PipelineResult:
     """Run the full parse → normalize → upsert → cleanup pipeline.
 
@@ -219,6 +235,7 @@ async def run_pipeline(
         commit_sha: Current commit SHA (stored on nodes for soft-delete tracking).
         explicit_files: If set, skip file discovery and use this list.
         do_soft_delete: If True, soft-delete orphaned nodes after upsert.
+        progress: Optional progress sink (see ``code_kg.ingestion.jobs``).
 
     Returns:
         PipelineResult with counters and any non-fatal errors.
@@ -227,23 +244,33 @@ async def run_pipeline(
     t0 = time.monotonic()
 
     try:
+        if progress is not None:
+            progress.set_phase("parsing")
         files = collect_files(repo_path, patterns, explicit_files, exclude_patterns)
+        if progress is not None:
+            progress.set_total(len(files))
         if not files:
             logger.warning(f"No files found for repo={repo_slug}")
             result.duration_seconds = time.monotonic() - t0
             return result
 
         logger.info(f"Extracting {len(files)} files for repo={repo_slug}")
-        all_nodes, all_edges = await extract_files(repo_path, files)
+        all_nodes, all_edges = await extract_files(repo_path, files, progress)
         logger.info(f"Extracted {len(all_nodes)} nodes, {len(all_edges)} edges")
+        if progress is not None:
+            progress.file_done(len(files))  # files that yielded no nodes
+            progress.set_phase("upserting")
 
         nodes_upserted, edges_upserted = await normalize_and_upsert(
             client, all_nodes, all_edges, repo_slug,
             changed_files=changed_files,
+            seen_commit=commit_sha,
         )
         result.nodes_added = nodes_upserted
         result.edges_added = edges_upserted
 
+        if progress is not None:
+            progress.set_phase("cleanup")
         # Always persist source_path so enrichment can read files without
         # the caller supplying the path again.
         await update_repo_meta(
@@ -252,9 +279,16 @@ async def run_pipeline(
             source_path=str(repo_path.resolve()),
         )
         if commit_sha:
-            await mark_files_seen(client, repo_slug, files, commit_sha)
+            # ``seen_commit`` above stamped exactly the nodes found in this run; stamping whole
+            # files by path would also stamp symbols that no longer exist in them.
             if do_soft_delete:
-                removed = await soft_delete_orphans(client, repo_slug, commit_sha)
+                removed = await soft_delete_orphans(
+                    client,
+                    repo_slug,
+                    commit_sha,
+                    # A partial (incremental) run must not sweep the files it skipped.
+                    file_paths=files if explicit_files is not None else None,
+                )
                 result.nodes_removed = removed
 
     except Exception as e:

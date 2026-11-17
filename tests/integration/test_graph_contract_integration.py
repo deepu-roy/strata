@@ -304,3 +304,111 @@ def test_cli_bootstrap_and_ingest(neo4j_settings, monkeypatch):
 
     row = asyncio.run(count())[0]
     assert row["name"] == "cli-fixture" and row["nodes"] > 0
+
+
+# ── incremental ingest must not delete what it did not re-process ─────────────
+
+
+def _git(cwd: Path, *args: str) -> str:
+    import subprocess
+
+    env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t.io",
+           "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t.io"}  # fmt: skip
+    return subprocess.run(
+        ["git", *args], cwd=cwd, env=env, check=True, capture_output=True, text=True
+    ).stdout.strip()
+
+
+async def _live_functions(client: Neo4jClient, repo: str) -> dict[str, set[str]]:
+    """{file: {names of live (not soft-deleted) Function nodes}}"""
+    rows = await client.execute_query(
+        "MATCH (n:Function {repo: $repo}) WHERE n.deleted_at IS NULL "
+        "RETURN n.filePath AS f, n.name AS name",
+        {"repo": repo},
+    )
+    out: dict[str, set[str]] = {}
+    for r in rows:
+        out.setdefault(r["f"], set()).add(r["name"])
+    return out
+
+
+def test_incremental_ingest_keeps_untouched_files_and_resurrects_returned_nodes(
+    neo4j_settings, tmp_path
+):
+    """Regression: an incremental run soft-deleted every file it had not re-processed.
+
+    The orphan sweep treated "not stamped by this commit" as "gone", which is only true for a
+    full ingest. Verified live: after re-indexing 2 changed files, 24 of 28 nodes were hidden.
+    """
+    repo, slug = tmp_path / "r", "incr-test"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    (repo / "a.py").write_text("def keep():\n    return 1\n\ndef drop():\n    return 2\n")
+    (repo / "b.py").write_text("def other():\n    return 3\n")
+    (repo / "c.py").write_text("def third():\n    return 4\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "one")
+    c1 = _git(repo, "rev-parse", "HEAD")
+
+    async def scenario() -> None:
+        await run_migrations(neo4j_settings)
+        client = Neo4jClient(neo4j_settings.neo4j)
+        await client.connect()
+        try:
+            full = await run_pipeline(client, repo, slug, ["**/*.py"], commit_sha=c1, do_soft_delete=True)
+            assert not full.errors, full.errors
+            assert await _live_functions(client, slug) == {
+                "a.py": {"keep", "drop"}, "b.py": {"other"}, "c.py": {"third"},
+            }  # fmt: skip
+
+            # c2: a.py loses `drop` and gains `fresh`; b.py and c.py are untouched.
+            (repo / "a.py").write_text("def keep():\n    return 1\n\ndef fresh():\n    return 5\n")
+            _git(repo, "add", "-A")
+            _git(repo, "commit", "-qm", "two")
+            c2 = _git(repo, "rev-parse", "HEAD")
+            inc = await run_pipeline(
+                client, repo, slug, ["**/*.py"], commit_sha=c2,
+                explicit_files=["a.py"], changed_files={"a.py"}, do_soft_delete=True,
+            )  # fmt: skip
+            assert not inc.errors, inc.errors
+
+            live = await _live_functions(client, slug)
+            assert live["b.py"] == {"other"}, "an untouched file was soft-deleted"
+            assert live["c.py"] == {"third"}, "an untouched file was soft-deleted"
+            assert live["a.py"] == {"keep", "fresh"}, "symbol removed from a changed file must go"
+            assert inc.nodes_removed == 1  # exactly `drop`, not the other files
+
+            # c3 adds nothing that can be indexed (an empty incremental): nothing may be swept.
+            (repo / "note.txt").write_text("x")
+            _git(repo, "add", "-A")
+            _git(repo, "commit", "-qm", "three")
+            c3 = _git(repo, "rev-parse", "HEAD")
+            await run_pipeline(
+                client, repo, slug, ["**/*.py"], commit_sha=c3,
+                explicit_files=[], changed_files=None, do_soft_delete=True,
+            )  # fmt: skip
+            assert await _live_functions(client, slug) == live, "an empty incremental swept the repo"
+
+            # A node wrongly (or formerly) soft-deleted comes back when its file is seen again.
+            await client.execute_query(
+                "MATCH (n:Function {repo: $repo, name: 'other'}) SET n.deleted_at = datetime()",
+                {"repo": slug},
+            )
+            assert "b.py" not in await _live_functions(client, slug)
+            await run_pipeline(
+                client, repo, slug, ["**/*.py"], commit_sha=c3,
+                explicit_files=["b.py"], changed_files={"b.py"}, do_soft_delete=True,
+            )  # fmt: skip
+            assert (await _live_functions(client, slug))["b.py"] == {"other"}
+
+            # A full ingest still sweeps the whole repository.
+            (repo / "c.py").unlink()
+            _git(repo, "add", "-A")
+            _git(repo, "commit", "-qm", "four")
+            c4 = _git(repo, "rev-parse", "HEAD")
+            await run_pipeline(client, repo, slug, ["**/*.py"], commit_sha=c4, do_soft_delete=True)
+            assert "c.py" not in await _live_functions(client, slug)
+        finally:
+            await client.close()
+
+    asyncio.run(scenario())
