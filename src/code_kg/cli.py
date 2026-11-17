@@ -56,6 +56,10 @@ def version() -> None:
 @app.command()
 def mcp(
     transport: str = typer.Argument("stdio", help="Transport: stdio or http"),
+    host: Optional[str] = typer.Option(None, "--host", help="HTTP bind host (default MCP_HTTP_HOST)."),
+    port: Optional[int] = typer.Option(
+        None, "--port", help="HTTP port (default MCP_HTTP_PORT, 8765). Use to avoid clashes."
+    ),
 ) -> None:
     """Start the MCP server.
 
@@ -66,6 +70,10 @@ def mcp(
         code-kg mcp http
     """
     settings = Settings()
+    if host:
+        settings.mcp_http_host = host
+    if port:
+        settings.mcp_http_port = port
     configure_logging(settings)
 
     from code_kg.mcp.server import create_server
