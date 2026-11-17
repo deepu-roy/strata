@@ -382,11 +382,11 @@ RETURN r
 
 LIST_ALL_REPOS = """
 MATCH (r:Repo)
-OPTIONAL MATCH (n:CodeNode {repo: r.slug}) WHERE n.deleted_at IS NULL
+OPTIONAL MATCH (n:CodeNode {repo: r.name}) WHERE n.deleted_at IS NULL
 WITH r, count(n) AS node_count
-OPTIONAL MATCH (:CodeNode {repo: r.slug})-[e]->(:CodeNode {repo: r.slug})
-RETURN r.slug AS slug, r.last_commit_sha AS last_commit_sha,
-       r.last_ingest_at AS last_ingest_at, node_count, count(e) AS edge_count
+OPTIONAL MATCH (:CodeNode {repo: r.name})-[e]->(:CodeNode {repo: r.name})
+RETURN r.name AS slug, r.last_commit_sha AS last_commit_sha,
+       toString(r.last_ingest_at) AS last_ingest_at, node_count, count(e) AS edge_count
 ORDER BY r.last_ingest_at DESC
 """
 
@@ -396,7 +396,7 @@ GET_ENTRY_POINTS = """
 MATCH (n:CodeNode)-[:BELONGS_TO_LAYER]->(l:Layer)
 WHERE n.repo = $repo AND n.deleted_at IS NULL AND l.name = $layer
 WITH n, size((()-[:CALLS]->(n))) AS in_deg
-RETURN n.id AS id, n.name AS name, labels(n) AS labels, n.file_path AS file_path,
+RETURN n.id AS id, n.name AS name, labels(n) AS labels, n.filePath AS file_path,
        n.summary AS summary, in_deg
 ORDER BY in_deg DESC LIMIT 10
 """
@@ -405,7 +405,7 @@ GET_HOTSPOTS = """
 MATCH (n:CodeNode {repo: $repo}) WHERE n.deleted_at IS NULL
 WITH n, size((()-[:CALLS]->(n))) AS in_deg, size((n)-[:CALLS]->()) AS out_deg
 WHERE in_deg + out_deg > 0
-RETURN n.id AS id, n.name AS name, labels(n) AS labels, n.file_path AS file_path,
+RETURN n.id AS id, n.name AS name, labels(n) AS labels, n.filePath AS file_path,
        in_deg, out_deg, in_deg + out_deg AS total_degree
 ORDER BY total_degree DESC LIMIT 15
 """
@@ -436,7 +436,7 @@ RETURN a.id AS from_id, b.id AS to_id
 GET_ALL_FUNCTIONS = """
 MATCH (n:CodeNode {repo: $repo})
 WHERE n.deleted_at IS NULL AND (n:Function OR n:Method)
-RETURN n.id AS id, n.name AS name, n.file_path AS file_path,
+RETURN n.id AS id, n.name AS name, n.filePath AS file_path,
        n.summary AS summary, labels(n) AS labels
 """
 
