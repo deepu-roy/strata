@@ -305,19 +305,19 @@ class TestProviderProtocolProperties:
         assert p.name == "openai"
 
     def test_ollama_provider_has_name_and_model_version(self):
-        from code_kg.providers.summary.ollama import OllamaProvider
+        from code_kg.providers.summary.llm import LLMSummaryProvider
         from code_kg.config import SummarySettings
 
         settings = SummarySettings(provider="ollama", model="qwen2.5-coder:14b")
-        p = OllamaProvider(settings)
+        p = LLMSummaryProvider(settings)
         assert p.name == "ollama"
         assert p.model_version == "qwen2.5-coder:14b"
 
     def test_openai_summary_provider_has_name_and_model_version(self):
-        from code_kg.providers.summary.openai import OpenAIProvider
+        from code_kg.providers.summary.llm import LLMSummaryProvider
         from code_kg.config import SummarySettings
 
         settings = SummarySettings(provider="openai", model="gpt-4o-mini", api_key="sk-x")
-        p = OpenAIProvider(settings)
+        p = LLMSummaryProvider(settings)
         assert p.name == "openai"
         assert p.model_version == "gpt-4o-mini"

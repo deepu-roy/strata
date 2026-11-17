@@ -155,8 +155,7 @@ class TestLinkDocs:
         client = MagicMock()
         client.execute_query = AsyncMock(return_value=[])
         settings = MagicMock()
-        settings.summary.base_url = "http://localhost:11434"
-        settings.summary.model = "qwen"
+        settings.summary.model = "ollama/qwen"
 
         result = await link_docs(client, settings, "myrepo")
         assert result.sections_processed == 0
@@ -181,10 +180,9 @@ class TestLinkDocs:
             [{"r": {}}],       # DOCUMENTS edge upsert
         ])
         settings = MagicMock()
-        settings.summary.base_url = "http://localhost:11434"
-        settings.summary.model = "qwen"
+        settings.summary.model = "ollama/qwen"
 
-        with patch("code_kg.ingestion.docs_linker.LLMClient") as MockLLM:
+        with patch("code_kg.ingestion.docs_linker.LLMGateway") as MockLLM:
             mock_instance = MagicMock()
             mock_instance.chat = AsyncMock(return_value=json.dumps({
                 "documented": [{"name": "ClientService", "confidence": 0.85}]
@@ -214,10 +212,9 @@ class TestLinkDocs:
             [code_node],
         ])
         settings = MagicMock()
-        settings.summary.base_url = "http://localhost:11434"
-        settings.summary.model = "qwen"
+        settings.summary.model = "ollama/qwen"
 
-        with patch("code_kg.ingestion.docs_linker.LLMClient") as MockLLM:
+        with patch("code_kg.ingestion.docs_linker.LLMGateway") as MockLLM:
             mock_instance = MagicMock()
             # confidence 0.1 < _MIN_CONFIDENCE (0.3) → classify_with_llm returns []
             mock_instance.chat = AsyncMock(return_value=json.dumps({

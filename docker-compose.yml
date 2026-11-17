@@ -9,13 +9,22 @@ services:
       NEO4J__PASSWORD: ${NEO4J__PASSWORD}
       EMBEDDING__PROVIDER: ${EMBEDDING__PROVIDER:-sentence_transformers}
       EMBEDDING__MODEL: ${EMBEDDING__MODEL:-BAAI/bge-small-en-v1.5}
-      SUMMARY__PROVIDER: ${SUMMARY__PROVIDER:-ollama}
-      # Default points to the bundled ollama service on the internal Docker network.
-      # To use Ollama running on your host machine instead, set in .env:
-      #   SUMMARY__BASE_URL=http://host.docker.internal:11434
-      # and comment out the ollama + ollama-init services below.
-      SUMMARY__BASE_URL: ${SUMMARY__BASE_URL:-http://ollama:11434}
-      SUMMARY__MODEL: ${SUMMARY__MODEL:-qwen2.5-coder:7b}
+      # The provider is the prefix of SUMMARY__MODEL (ollama/…, anthropic/…, openai/…,
+      # openrouter/…); SUMMARY__PROVIDER is only read for a legacy bare model name.
+      SUMMARY__PROVIDER: ${SUMMARY__PROVIDER:-}
+      # Leave empty to use each provider's own endpoint. Only set it for a custom endpoint
+      # (an OpenAI-compatible server, or Ollama on another host).
+      SUMMARY__BASE_URL: ${SUMMARY__BASE_URL:-}
+      # Ollama models resolve to the bundled ollama service on the Docker network. To use
+      # Ollama on your host instead, set OLLAMA_API_BASE=http://host.docker.internal:11434
+      # in .env and comment out the ollama + ollama-init services below.
+      OLLAMA_API_BASE: ${OLLAMA_API_BASE:-http://ollama:11434}
+      SUMMARY__MODEL: ${SUMMARY__MODEL:-ollama/qwen2.5-coder:7b}
+      SUMMARY__API_KEY: ${SUMMARY__API_KEY:-}
+      # Providers' own key variables (LiteLLM reads these); set the one you use in .env.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       SUMMARY__TEMPERATURE: ${SUMMARY__TEMPERATURE:-0.1}
       SUMMARY__MAX_CONCURRENT: ${SUMMARY__MAX_CONCURRENT:-1}
       MCP_TRANSPORT: ${MCP_TRANSPORT:-http}
@@ -39,21 +48,27 @@ services:
     networks:
       - code-kg
 
-  # Waits for the ollama service to be ready, then pulls the configured model.
-  # Does NOT start its own server — pulls through the running ollama service.
-  # Re-running `docker compose up` is safe — `ollama pull` is idempotent.
+  # Waits for the ollama service to be ready, then pulls the configured model — but only when
+  # SUMMARY__MODEL is an Ollama model (``ollama/…`` or a bare name). A cloud model such as
+  # ``anthropic/…`` or ``openai/…`` is skipped. ``ollama pull`` is idempotent.
   ollama-init:
     image: ollama/ollama:latest
     entrypoint: >
       sh -c "
+        M='${SUMMARY__MODEL:-ollama/qwen2.5-coder:7b}' &&
+        case $$M in
+          anthropic/*|openai/*|azure/*|openrouter/*|bedrock/*|vertex_ai/*|gemini/*|groq/*|mistral/*|together_ai/*|deepseek/*|xai/*|cohere/*|huggingface/*|hosted_vllm/*|lm_studio/*)
+            echo \"$$M is not an Ollama model; nothing to pull.\"; exit 0 ;;
+          ollama/*|ollama_chat/*) M=$${M#*/} ;;
+        esac &&
         echo 'Waiting for Ollama service...' &&
         until OLLAMA_HOST=http://ollama:11434 ollama list > /dev/null 2>&1; do sleep 2; done &&
-        echo 'Pulling ${SUMMARY__MODEL:-qwen2.5-coder:7b}...' &&
-        OLLAMA_HOST=http://ollama:11434 ollama pull ${SUMMARY__MODEL:-qwen2.5-coder:7b} &&
+        echo \"Pulling $$M...\" &&
+        OLLAMA_HOST=http://ollama:11434 ollama pull $$M &&
         echo 'Model ready.'
       "
     environment:
-      SUMMARY__MODEL: ${SUMMARY__MODEL:-qwen2.5-coder:7b}
+      SUMMARY__MODEL: ${SUMMARY__MODEL:-ollama/qwen2.5-coder:7b}
       OLLAMA_HOST: http://ollama:11434
     depends_on:
       - ollama
@@ -63,7 +78,7 @@ services:
   ollama:
     image: ollama/ollama:latest
     ports:
-      - "11434:11434"
+      - "${OLLAMA_PORT:-11434}:11434"
     volumes:
       - ollama-data:/root/.ollama
     networks:
@@ -76,8 +91,8 @@ services:
       NEO4J_AUTH: neo4j/${NEO4J__PASSWORD:-password123}
       NEO4J_server_memory_pagecache_size: 2G
     ports:
-      - "7474:7474"
-      - "7687:7687"
+      - "${NEO4J_HTTP_PORT:-7474}:7474"
+      - "${NEO4J_BOLT_PORT:-7687}:7687"
     volumes:
       - neo4j-data:/var/lib/neo4j/data
     restart: unless-stopped

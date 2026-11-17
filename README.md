@@ -174,9 +174,9 @@ NEO4J__PASSWORD=password123
 EMBEDDING__PROVIDER=sentence_transformers
 EMBEDDING__MODEL=BAAI/bge-small-en-v1.5
 
-# Summary LLM (local Ollama)
-SUMMARY__PROVIDER=ollama
-SUMMARY__MODEL=qwen2.5-coder:7b
+# Summary LLM: the provider is the prefix of the model string
+# (ollama/..., anthropic/..., openai/..., openrouter/...); see docs/configuration.md
+SUMMARY__MODEL=ollama/qwen2.5-coder:7b
 
 # MCP transport
 MCP_TRANSPORT=stdio          # or http

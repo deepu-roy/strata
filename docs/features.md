@@ -88,9 +88,9 @@ After ingestion, run `code-kg enrich` to generate:
 
 Enrichment is **incremental** by default — only nodes without an existing summary are processed. Use `--limit` to process a batch at a time.
 
-Supports two provider backends:
+The provider is configuration (one `SUMMARY__MODEL` string), for example:
 - **Ollama** (local, private) — default; uses `qwen2.5-coder:7b` (configurable via `SUMMARY__MODEL` in `.env`)
-- **OpenAI** (cloud) — set `SUMMARY__PROVIDER=openai` and provide `SUMMARY__API_KEY`
+- **Claude / OpenAI / OpenRouter** (cloud) — set `SUMMARY__MODEL` to e.g. `anthropic/claude-haiku-5-5` and provide the provider's API key (see [configuration](configuration.md#summary--llm-provider))
 
 ---
 

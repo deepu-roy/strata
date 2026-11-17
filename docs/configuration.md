@@ -55,86 +55,95 @@ key separator.
 
 ## Summary / LLM provider
 
-CodeKG supports two provider modes. Both use the same underlying HTTP client — the
-difference is the API dialect and authentication behaviour.
+The provider is **configuration, not code**. `SUMMARY__MODEL` is a [LiteLLM](https://docs.litellm.ai)
+model string whose prefix selects the provider, so switching between Claude, OpenAI, OpenRouter,
+Ollama or a local server is an `.env` change; there is nothing to install or edit. All LLM calls
+(node summaries and documentation linking) go through one gateway, with small per-provider
+adapters for the quirks (unsupported sampling parameters, JSON mode, default endpoints).
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SUMMARY__PROVIDER` | `ollama` | `ollama` or `openai` — selects the API dialect (see below) |
-| `SUMMARY__BASE_URL` | `http://localhost:11434` | Base URL of the LLM server |
-| `SUMMARY__MODEL` | `qwen2.5-coder:7b` | Model name passed to the server |
-| `SUMMARY__API_KEY` | *(empty)* | Bearer token — required when `SUMMARY__PROVIDER=openai` |
+| `SUMMARY__MODEL` | `ollama/qwen2.5-coder:7b` | `<provider>/<model>`, see the table below |
+| `SUMMARY__API_KEY` | *(empty)* | API key. Empty = LiteLLM reads the provider's own variable (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`) |
+| `SUMMARY__BASE_URL` | *(empty)* | Endpoint override. Empty = the provider's default (Ollama: `OLLAMA_API_BASE`, else `http://localhost:11434`) |
 | `SUMMARY__TEMPERATURE` | `0.1` | Lower = more deterministic outputs |
-| `SUMMARY__MAX_CONCURRENT` | `1` | Parallel LLM calls during enrichment |
+| `SUMMARY__TIMEOUT` | `120` | Per-request timeout in seconds |
+| `SUMMARY__MAX_CONCURRENT` | `4` | Parallel LLM calls during enrichment |
+| `SUMMARY__EXTRA_PARAMS` | `{}` | JSON merged into every completion (e.g. `{"top_p": 0.9}`) |
 
-### Provider modes
+### Choosing a provider
 
-**`SUMMARY__PROVIDER=ollama`** — uses Ollama's `POST /api/chat` dialect. Assumes no
-auth header. Default `BASE_URL` is `http://localhost:11434`.
+| Provider | `SUMMARY__MODEL` example | Credentials |
+|----------|--------------------------|-------------|
+| Ollama (local) | `ollama/qwen2.5-coder:7b` | none |
+| Claude (Anthropic) | `anthropic/claude-haiku-5-5` | `ANTHROPIC_API_KEY` or `SUMMARY__API_KEY` |
+| OpenAI | `openai/gpt-4o-mini` | `OPENAI_API_KEY` or `SUMMARY__API_KEY` |
+| OpenRouter | `openrouter/anthropic/claude-3.5-haiku` | `OPENROUTER_API_KEY` or `SUMMARY__API_KEY` |
+| OpenAI-compatible server (LM Studio, llama.cpp, vLLM) | `openai/your-model` + `SUMMARY__BASE_URL=http://localhost:1234/v1` | any non-empty `SUMMARY__API_KEY` |
+| Azure OpenAI | `azure/your-deployment` | see the LiteLLM Azure docs |
+| Anything else LiteLLM supports | `bedrock/…`, `vertex_ai/…`, `groq/…` | per the LiteLLM docs |
 
-**`SUMMARY__PROVIDER=openai`** — uses the OpenAI `POST /v1/chat/completions` dialect
-with JSON-mode output. Works with any server that speaks this API, including:
+**When you switch provider, clear `SUMMARY__BASE_URL`** unless you really want a custom endpoint.
+A leftover Ollama URL would otherwise receive the cloud provider's requests (CodeKG logs a warning
+when it sees this).
 
-- OpenAI (cloud)
-- Azure OpenAI
-- LM Studio (`http://localhost:1234`)
-- llama.cpp server (`http://localhost:8080`)
-- vLLM, Mistral AI, Together AI, Groq, and other OpenAI-compatible hosts
+### Legacy configuration
 
-For local servers that don't enforce auth, set `SUMMARY__API_KEY` to any non-empty
-placeholder string (the field is required but the value is not validated server-side).
+The previous form still works and is converted on load: `SUMMARY__PROVIDER=openai` with a bare
+`SUMMARY__MODEL=gpt-4o-mini` becomes `openai/gpt-4o-mini`; for `openai`, `/v1` is appended to
+`SUMMARY__BASE_URL` if missing. Cached summaries are keyed by model; for existing Ollama and OpenAI
+setups the key is unchanged, so upgrading does not trigger re-summarising.
 
 ### Recommended models
 
-| Model | Where to run | RAM | Notes |
-|-------|-------------|-----|-------|
-| `qwen2.5-coder:7b` | Ollama | ~8 GB | **Default.** Good quality, works on most machines |
-| `qwen2.5-coder:14b` | Ollama | ~16 GB | Higher quality; needs ≥ 16 GB RAM |
-| `codellama:13b` | Ollama / llama.cpp | ~16 GB | Alternative local option |
-| `deepseek-coder-v2:16b` | Ollama / LM Studio | ~20 GB | Strong alternative |
-| `gpt-4o-mini` | OpenAI cloud | — | Fast, cheap, good code comprehension |
-| `gpt-4o` | OpenAI cloud | — | Highest quality cloud option |
+| Model string | Where it runs | RAM | Notes |
+|--------------|---------------|-----|-------|
+| `ollama/qwen2.5-coder:7b` | Ollama | ~8 GB | **Default.** Good quality, works on most machines |
+| `ollama/qwen2.5-coder:14b` | Ollama | ~16 GB | Higher quality; needs ≥ 16 GB RAM |
+| `ollama/deepseek-coder-v2:16b` | Ollama / LM Studio | ~20 GB | Strong alternative |
+| `anthropic/claude-haiku-5-5` | Anthropic cloud | n/a | Fast and inexpensive |
+| `openai/gpt-4o-mini` | OpenAI cloud | n/a | Fast, cheap, good code comprehension |
 
 ### Setup examples
 
 **Ollama (default)**
 ```dotenv
-SUMMARY__PROVIDER=ollama
-SUMMARY__BASE_URL=http://localhost:11434
-SUMMARY__MODEL=qwen2.5-coder:7b
+SUMMARY__MODEL=ollama/qwen2.5-coder:7b
 ```
 
-**LM Studio**
+**Claude**
 ```dotenv
-SUMMARY__PROVIDER=openai
-SUMMARY__BASE_URL=http://localhost:1234
+SUMMARY__MODEL=anthropic/claude-haiku-5-5
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+**OpenAI**
+```dotenv
+SUMMARY__MODEL=openai/gpt-4o-mini
+OPENAI_API_KEY=sk-...
+```
+
+**OpenRouter**
+```dotenv
+SUMMARY__MODEL=openrouter/anthropic/claude-3.5-haiku
+OPENROUTER_API_KEY=sk-or-...
+```
+
+**LM Studio / llama.cpp / vLLM** (any OpenAI-compatible server)
+```dotenv
+SUMMARY__MODEL=openai/your-model-name
+SUMMARY__BASE_URL=http://localhost:1234/v1
 SUMMARY__API_KEY=lm-studio
-SUMMARY__MODEL=your-model-name
 ```
 
-**llama.cpp server** (`llama-server --port 8080 -m model.gguf`)
-```dotenv
-SUMMARY__PROVIDER=openai
-SUMMARY__BASE_URL=http://localhost:8080
-SUMMARY__API_KEY=no-key-needed
-SUMMARY__MODEL=your-model-name
-```
+### Adding a provider
 
-**OpenAI cloud**
-```dotenv
-SUMMARY__PROVIDER=openai
-SUMMARY__BASE_URL=https://api.openai.com
-SUMMARY__API_KEY=sk-...
-SUMMARY__MODEL=gpt-4o-mini
-```
+Most providers need nothing: LiteLLM's model strings already cover them. If one needs special
+handling, add a small class to `code_kg/providers/llm/adapters.py` (`matches` + `prepare`) and call
+`register_adapter(...)`; the gateway is untouched.
 
-**Azure OpenAI**
-```dotenv
-SUMMARY__PROVIDER=openai
-SUMMARY__BASE_URL=https://YOUR-RESOURCE.openai.azure.com/openai/deployments/YOUR-DEPLOYMENT
-SUMMARY__API_KEY=your-azure-key
-SUMMARY__MODEL=gpt-4o
-```
+> Embeddings are configured separately (`EMBEDDING__*`, above). Claude has no embeddings API, so the
+> embedding provider is independent of the summary provider.
 
 ### Docker: `.env` is the single source of truth
 
@@ -142,9 +151,9 @@ When running via Docker Compose, all environment variables are read from `.env`.
 The `docker-compose.yml` file uses `${VAR:-default}` interpolation — there are no
 hardcoded model names in the compose file. To switch the LLM model:
 
-1. Edit `SUMMARY__MODEL` (and optionally `SUMMARY__PROVIDER` / `SUMMARY__BASE_URL`) in `.env`
-2. Run `docker compose up -d` — the `ollama-init` service automatically pulls the
-   new model before the MCP server starts (only relevant when using Ollama)
+1. Edit `SUMMARY__MODEL` in `.env` (and the provider's API key if it is a cloud model; clear `SUMMARY__BASE_URL`)
+2. Run `docker compose up -d` — the `ollama-init` service pulls the model before the MCP
+   server starts when it is an Ollama model, and does nothing for a cloud model
 
 > **Important:** If you change `EMBEDDING__MODEL` you must also drop and recreate the
 > Neo4j vector index and re-run `code-kg enrich` for all repos (the vector index
@@ -195,11 +204,11 @@ EMBEDDING__API_KEY=
 EMBEDDING__BATCH_SIZE=32
 
 # ── Summaries (LLM) ───────────────────────────────────────────────
-SUMMARY__PROVIDER=ollama
-SUMMARY__BASE_URL=http://localhost:11434
-SUMMARY__MODEL=qwen2.5-coder:7b
-SUMMARY__API_KEY=
+SUMMARY__MODEL=ollama/qwen2.5-coder:7b   # or anthropic/claude-haiku-5-5, openai/gpt-4o-mini, ...
+SUMMARY__BASE_URL=                       # empty = the provider's default endpoint
+SUMMARY__API_KEY=                        # empty = read ANTHROPIC_API_KEY / OPENAI_API_KEY / ...
 SUMMARY__TEMPERATURE=0.1
+SUMMARY__TIMEOUT=120
 SUMMARY__MAX_CONCURRENT=4
 
 # ── MCP server ────────────────────────────────────────────────────

@@ -1,7 +1,8 @@
 """Configuration management via Pydantic Settings."""
 
-from typing import Literal
+from typing import Any, Literal
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -34,15 +35,54 @@ class EmbeddingSettings(BaseSettings):
         return dims.get(self.model, 384)
 
 
-class SummarySettings(BaseSettings):
-    """Summary/LLM provider configuration."""
+# Provider prefixes LiteLLM routes on (``<prefix>/<model>``). A model without one of these is
+# the legacy bare form (``qwen2.5-coder:7b``) and is prefixed from ``provider``.
+_PROVIDER_PREFIXES = frozenset(
+    {
+        "anthropic", "openai", "azure", "openrouter", "ollama", "ollama_chat", "bedrock",
+        "vertex_ai", "gemini", "groq", "mistral", "together_ai", "deepseek", "xai", "cohere",
+        "huggingface", "hosted_vllm", "lm_studio",
+    }
+)  # fmt: skip
 
-    provider: Literal["ollama", "openai"] = "ollama"
-    base_url: str = "http://localhost:11434"
+
+class SummarySettings(BaseSettings):
+    """Summary/LLM configuration. The provider is configuration, not code.
+
+    ``model`` is a LiteLLM model string whose prefix selects the provider, e.g.
+    ``ollama/qwen2.5-coder:7b``, ``anthropic/claude-haiku-5-5``, ``openai/gpt-4o-mini``,
+    ``openrouter/anthropic/claude-3.5-haiku``. Switching provider is a config change only.
+
+    Legacy form still accepted: ``provider`` + a bare ``model`` (``SUMMARY__PROVIDER=openai``,
+    ``SUMMARY__MODEL=gpt-4o-mini``) is folded into the prefixed form on load.
+    """
+
+    provider: str | None = None  # derived from ``model``'s prefix; legacy input only
     model: str = "qwen2.5-coder:7b"
-    api_key: str | None = None
+    base_url: str = ""  # api_base override; empty = the provider's default
+    api_key: str | None = None  # empty = LiteLLM reads the provider's own env var
     temperature: float = 0.1
     max_concurrent: int = 4
+    timeout: float = 120.0
+    extra_params: dict[str, Any] = {}  # JSON in env, merged into every completion
+
+    @model_validator(mode="after")
+    def _normalise_model(self) -> "SummarySettings":
+        head = self.model.split("/", 1)[0].lower()
+        bare_openai = "/" not in self.model and (
+            self.model.startswith("gpt-") or (self.model[:1] == "o" and self.model[1:2].isdigit())
+        )
+        if head not in _PROVIDER_PREFIXES:
+            # Legacy / bare model: the provider comes from ``provider`` (default: Ollama).
+            prefix = "openai" if bare_openai and not self.provider else (self.provider or "ollama")
+            self.model = f"{prefix}/{self.model}"
+        self.provider = self.model.split("/", 1)[0].lower()
+        # Legacy OpenAI-compatible servers were configured without ``/v1`` (the old client
+        # appended ``/v1/chat/completions``); LiteLLM expects it in ``api_base``.
+        if self.provider == "openai" and self.base_url:
+            base = self.base_url.rstrip("/")
+            self.base_url = base if base.endswith("/v1") else f"{base}/v1"
+        return self
 
 
 class Settings(BaseSettings):

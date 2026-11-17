@@ -21,7 +21,7 @@ from typing import Optional
 from code_kg.config import Settings
 from code_kg.graph import queries as Q
 from code_kg.graph.client import Neo4jClient
-from code_kg.providers.llm.client import LLMClient
+from code_kg.providers.llm.gateway import LLMGateway
 
 logger = logging.getLogger(__name__)
 
@@ -131,7 +131,7 @@ If none qualify, return {"documented": []}.
 
 
 async def classify_with_llm(
-    llm_client: LLMClient,
+    llm_client: LLMGateway,
     model: str,
     section_text: str,
     candidates: list[dict],
@@ -139,8 +139,8 @@ async def classify_with_llm(
     """Call the LLM to classify which candidates are documented in *section_text*.
 
     Args:
-        llm_client: Shared LLM HTTP client.
-        model: Model name (e.g. ``qwen2.5-coder:14b``).
+        llm_client: Shared LLM gateway (provider chosen by configuration).
+        model: LiteLLM model string (e.g. ``ollama/qwen2.5-coder:14b``).
         section_text: Section content (summary or heading).
         candidates: List of ``{id, name}`` dicts.
 
@@ -160,14 +160,13 @@ async def classify_with_llm(
 
     try:
         raw = await llm_client.chat(
-            path="/api/chat",
-            model=model,
-            messages=[
+            [
                 {"role": "system", "content": _SYSTEM_PROMPT},
                 {"role": "user", "content": user_msg},
             ],
+            model=model,
             temperature=0.0,
-            response_format={"type": "json_object"},
+            json_mode=True,
         )
         data = json.loads(raw)
         documented = data.get("documented", [])
@@ -255,7 +254,7 @@ async def link_docs(
         DocsLinkerResult with counts and any non-fatal errors.
     """
     result = DocsLinkerResult()
-    llm_client = LLMClient(base_url=settings.summary.base_url)
+    llm_client = LLMGateway(settings.summary)
 
     # ── Load sections and code names ─────────────────────────────────────────
     try:

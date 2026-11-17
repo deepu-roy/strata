@@ -49,7 +49,7 @@ def test_summary_settings_defaults():
     """
     settings = SummarySettings(model="qwen2.5-coder:7b")
     assert settings.provider == "ollama"
-    assert settings.model == "qwen2.5-coder:7b"
+    assert settings.model == "ollama/qwen2.5-coder:7b"
     assert settings.temperature == 0.1
 
 

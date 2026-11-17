@@ -39,14 +39,9 @@ def build_summary_provider(settings: SummarySettings) -> "SummaryProvider":
     Returns:
         Configured SummaryProvider instance.
 
-    Raises:
-        ValueError: If the provider name is unknown.
+    The provider is whatever ``settings.model``'s prefix selects (``ollama/...``,
+    ``anthropic/...``, ``openai/...``, ``openrouter/...``); nothing here branches on it.
     """
-    if settings.provider == "ollama":
-        from code_kg.providers.summary.ollama import OllamaProvider
-        return OllamaProvider(settings)
-    elif settings.provider == "openai":
-        from code_kg.providers.summary.openai import OpenAIProvider
-        return OpenAIProvider(settings)
-    else:
-        raise ValueError(f"Unknown summary provider: {settings.provider!r}")
+    from code_kg.providers.summary.llm import LLMSummaryProvider
+
+    return LLMSummaryProvider(settings)

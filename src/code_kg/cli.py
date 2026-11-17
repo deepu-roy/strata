@@ -212,8 +212,9 @@ def enrich(
     """Generate summaries and embeddings for nodes that haven't been enriched yet.
 
     Requires a running Neo4j instance (bootstrap first) and either:
-      - Ollama running locally  (SUMMARY__PROVIDER=ollama, default)
-      - OpenAI API key set      (SUMMARY__PROVIDER=openai, SUMMARY__API_KEY=...)
+      - Ollama running locally  (SUMMARY__MODEL=ollama/qwen2.5-coder:7b, default)
+      - or a cloud model + key  (SUMMARY__MODEL=anthropic/claude-haiku-5-5 with
+        ANTHROPIC_API_KEY, or openai/..., openrouter/...)
 
     Example:
         code-kg enrich --repo my-service --limit 100

@@ -25,6 +25,7 @@ dependencies = [
     "markdown-it-py>=3.0",
     "sentence-transformers>=2.2",
     "httpx>=0.24",
+    "litellm>=1.50",
     "fastapi>=0.100",
     "uvicorn>=0.23",
     "mcp>=1.0,<2",
