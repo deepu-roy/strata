@@ -80,14 +80,11 @@ def neo4j_settings():
         try:
             from testcontainers.community.neo4j import Neo4jContainer
         except ImportError:  # older testcontainers
-            try:
-            from testcontainers.community.neo4j import Neo4jContainer
-        except ImportError:  # older testcontainers
             from testcontainers.neo4j import Neo4jContainer
 
         container = Neo4jContainer(IMAGE, password=PASSWORD)
         container.start()
-    except Exception as exc:  # Docker unavailable / image pull failed
+    except Exception as exc:  # noqa: BLE001  Docker unavailable / image pull failed
         pytest.skip(f"Neo4j testcontainer unavailable: {exc}")
     try:
         yield Settings(
@@ -188,7 +185,7 @@ def test_edges_match_contract(graph, contract):
 
 def test_specific_edges(graph):
     triples = {(r["from_id"], r["type"], r["to_id"]) for r in graph["rels"]}
-    ts = f"contract/shapes.ts"
+    ts = "contract/shapes.ts"
     pol = f"class:{REPO}:{ts}:PoliteGreeter"
     assert (pol, "INHERITS", f"class:{REPO}:{ts}:BaseGreeter") in triples
     assert (pol, "IN_REPO", f"repo:{REPO}") in triples
@@ -219,7 +216,10 @@ def test_constraints_and_indexes_created(graph, contract):
 
 def test_mcp_read_tool_shapes(neo4j_settings, graph, contract):
     from code_kg.domain.models import (
-        FindNodesInput, GetNodeInput, ImpactAnalysisInput, GetArchitectureInput,
+        FindNodesInput,
+        GetArchitectureInput,
+        GetNodeInput,
+        ImpactAnalysisInput,
     )
     from code_kg.mcp.tools import read as R
 

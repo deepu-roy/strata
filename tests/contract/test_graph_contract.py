@@ -7,7 +7,7 @@ Intentional changes must update the contract and bump ``contract_version``.
 
 import asyncio
 import re
-from typing import Any, Optional
+from typing import Any
 
 import pytest
 from pydantic import BaseModel, ConfigDict, Field
@@ -18,7 +18,6 @@ from code_kg.domain.schema import LABELS, RELATIONSHIPS
 from code_kg.graph import migrations
 
 from .contract_loader import load_contract
-
 
 # ── Structural validity of the contract file itself ──────────────────────────
 
@@ -32,7 +31,7 @@ class _NodeSpec(BaseModel):
     emitted_by_pipeline: bool
     required: dict[str, str]
     optional: dict[str, str]
-    notes: Optional[str] = None
+    notes: str | None = None
 
 
 class _EdgeSpec(BaseModel):
@@ -202,7 +201,7 @@ def test_indexes_match_migrations(contract):
 
     fulltext = set()
     for stmt in migrations.FULLTEXT_INDEXES:
-        m = re.search(r"INDEX (\w+) IF NOT EXISTS\s+FOR \(n:(\w+)\) ON EACH \[(.*?)\]", stmt, re.S)
+        m = re.search(r"INDEX (\w+) IF NOT EXISTS\s+FOR \(n:(\w+)\) ON EACH \[(.*?)\]", stmt, re.DOTALL)
         assert m, stmt
         props = ",".join(p.strip().removeprefix("n.") for p in m[3].split(","))
         fulltext.add(f"{m[1]}:{m[2]}[{props}]")
@@ -294,3 +293,10 @@ def test_mcp_result_fields_match_models(contract):
 
 def test_default_mcp_port_matches_settings(contract):
     assert contract["mcp"]["default_http_port"] == Settings.model_fields["mcp_http_port"].default
+
+
+def test_doc_mentions_contract_version(contract):
+    from .contract_loader import CONTRACT_PATH
+
+    doc = (CONTRACT_PATH.parents[1] / "docs" / "graph-contract.md").read_text()
+    assert f"**{contract['contract_version']}**" in doc
