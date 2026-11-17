@@ -227,6 +227,24 @@ RETURN
 ORDER BY r.weight DESC
 """
 
+FIND_SYMBOLS_IN_FILE = """
+MATCH (n:CodeNode)
+WHERE n.filePath = $file_path
+  AND ($repo IS NULL OR toLower(n.repo) = toLower($repo))
+  AND NOT n:File
+RETURN
+  n.id       AS id,
+  labels(n)  AS labels,
+  n.name     AS name,
+  n.repo     AS repo,
+  n.filePath AS filePath,
+  n.summary  AS summary,
+  n.tags     AS tags,
+  n.layer    AS layer
+ORDER BY n.lineRange[0], n.name
+LIMIT $limit
+"""
+
 # ── Diff / changelog ──────────────────────────────────────────────────────────
 
 DIFF_ADDED = """

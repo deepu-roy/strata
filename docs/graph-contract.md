@@ -1,7 +1,7 @@
 # CodeKG graph contract
 
 Machine-readable source of truth: [`contract/graph-contract.json`](../contract/graph-contract.json)
-(version **1.0.0**). CodeKG is the producer; consumers (e.g. KDTIP) may rely on everything
+(version **1.2.0**). CodeKG is the producer; consumers (e.g. KDTIP) may rely on everything
 in that file and on nothing else. Drift is caught by `tests/contract/` (no Neo4j) and
 `tests/integration/test_graph_contract_integration.py` (real Neo4j via testcontainers).
 
@@ -82,13 +82,36 @@ Section, Layer, Concept, Repo (names `file_id`, `class_id`, ...). Range indexes
 
 ## MCP tools
 
-Stable (consumers may rely on): `find_nodes`, `get_node`, `impact_analysis`, `trace_call_chain`,
+Stable (consumers may rely on): `find_nodes`, `find_symbols_in_file`, `start_ingest_repo`, `get_ingest_job`,
+`check_repo_changes`, `get_node`, `impact_analysis`, `trace_call_chain`,
 `find_tests_for`, `find_docs_for`, `find_code_for`, `list_projects`, `list_layers`,
 `get_architecture`. Other tools (`semantic_search`, `get_diff`, `find_dead_code`, and the
 write tools) are listed in the JSON as `internal`. Params, defaults and result field names
 are in the JSON and verified against the live FastMCP schema and pydantic models.
+**Tips for consumers.** `find_nodes` has no output schema, so its JSON arrives only as text content (no
+`structuredContent`); `impact_analysis` wraps its result as `{"result": …}`. Call-graph edges connect
+*symbols*, not files: to analyse a changed file, list its symbols with `find_symbols_in_file` and run
+`impact_analysis` on those (on a `File` node it is empty). For an exact path lookup pass
+`use_semantic=false`.
+
+**Async ingest jobs and progress.** `start_ingest_repo(repo_url, repo_slug, branch="main", commit_sha=None,
+base_commit_sha=None, force_full=False, patterns=None)` returns `{job_id, status, already_running}` immediately;
+`get_ingest_job(job_id)` (or `GET /api/ingest-jobs/{job_id}`, 404 if unknown) returns the job snapshot: `status`
+(queued|running|completed|failed), `phase` (queued|cloning|parsing|upserting|cleanup|done), `files_total`,
+`files_done`, node/edge counters, `commit_sha`, `errors`, `notes`, timestamps and `elapsed_seconds`. Jobs are in
+memory only (about 1 hour, 100 jobs) and there is one active job per `repo_slug`. `commit_sha` is optional
+everywhere (omitted => tip of `branch`); the recorded sha is always the one actually checked out, and an
+unreachable `base_commit_sha` (force-push) falls back to a full ingest with a `notes` entry.
+`check_repo_changes` fetches and diffs `indexed..head` without indexing (`requires_full` when never indexed or
+the indexed sha is unreachable). Private HTTP(S) repos: set `CODEKG_GIT_TOKEN` (and optionally
+`CODEKG_GIT_USER`, default `x-access-token`); the credential is passed to git via its environment, never in
+argv, URLs or logs.
+
+**Changelog.** 1.2.0 added `start_ingest_repo`, `get_ingest_job`, `check_repo_changes`, `GET /api/ingest-jobs/{job_id}`,
+optional `ingest_repo.commit_sha`, and `notes`/`commit_sha` on `IngestRepoOutput` (additive). 1.1.0 added `find_symbols_in_file` (additive). 1.0.0 initial.
+
 Default HTTP port 8765 (`MCP_HTTP_PORT` or `code-kg mcp http --port N`), endpoint `/mcp`,
-plus `GET /api/repo-state?slug=`.
+plus `GET /api/repo-state?slug=` and `GET /api/ingest-jobs/{job_id}`.
 
 ## Known ambiguities
 

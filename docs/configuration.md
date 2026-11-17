@@ -177,6 +177,12 @@ hardcoded model names in the compose file. To switch the LLM model:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `WORKDIR` | `/tmp/code-kg-repos` | Local directory where remote GitHub repos are cloned |
+| `CODEKG_GIT_TOKEN` | _(unset)_ | Access token for private HTTP(S) repos. Sent as an `Authorization: Basic` extra header through git's environment config; never placed in argv, URLs or logs |
+| `CODEKG_GIT_USER` | `x-access-token` | Username paired with the token (GitHub apps/PATs accept the default) |
+
+Clones are stored as `WORKDIR/<repo-name>-<8 hex of sha1(normalised url)>`, so two different
+repositories with the same name never share a directory. On every ingest the clone is fetched
+and checked out (detached) at the requested `commit_sha`, or at `origin/<branch>`.
 
 ---
 
@@ -221,6 +227,8 @@ LOG_LEVEL=INFO
 
 # ── Git workdir (for remote repo ingestion) ───────────────────────
 WORKDIR=/tmp/code-kg-repos
+# CODEKG_GIT_TOKEN=...   # private repos (HTTP/HTTPS)
+# CODEKG_GIT_USER=x-access-token
 ```
 
 ---

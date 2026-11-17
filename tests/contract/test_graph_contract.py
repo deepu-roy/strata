@@ -265,6 +265,9 @@ _RESULT_MODELS = {
     "ArchitectureOutput": models.ArchitectureOutput,
     "DeadCodeOutput": models.DeadCodeOutput,
     "IngestRepoOutput": models.IngestRepoOutput,
+    "StartIngestOutput": models.StartIngestOutput,
+    "IngestJobSnapshot": models.IngestJobSnapshot,
+    "CheckRepoChangesOutput": models.CheckRepoChangesOutput,
 }
 
 
@@ -285,6 +288,7 @@ def test_mcp_result_fields_match_models(contract):
         ("impact_analysis", "docs[]"): models.FoundNode,
         ("list_projects", "projects[]"): models.ProjectSummary,
         ("get_architecture", "hotspots[]"): models.HotspotNode,
+        ("check_repo_changes", "files[]"): models.ChangedFile,
     }
     for (tool, key), model in nested.items():
         got = contract["mcp"]["tools"][tool]["result"]["nested"][key]

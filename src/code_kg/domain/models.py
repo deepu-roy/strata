@@ -209,7 +209,10 @@ class IngestRepoInput(BaseModel):
 
     repo_url: str
     repo_slug: str
-    commit_sha: str
+    commit_sha: Optional[str] = Field(
+        default=None,
+        description="Commit to index; omitted => the resolved tip of `branch`.",
+    )
     base_commit_sha: Optional[str] = None
     branch: str = "main"
     force_full: bool = False
@@ -231,6 +234,75 @@ class IngestRepoOutput(BaseModel):
     edges_removed: int
     duration_seconds: float
     errors: list[str] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+    commit_sha: Optional[str] = Field(
+        default=None, description="The commit actually indexed (resolved head)."
+    )
+
+
+class StartIngestOutput(BaseModel):
+    """Output for start_ingest_repo."""
+
+    job_id: str
+    status: Literal["queued", "running", "completed", "failed"]
+    already_running: bool = False
+
+
+class IngestJobSnapshot(BaseModel):
+    """Output for get_ingest_job (and GET /api/ingest-jobs/{job_id})."""
+
+    job_id: str
+    repo_slug: str
+    status: Literal["queued", "running", "completed", "failed"]
+    phase: Literal["queued", "cloning", "parsing", "upserting", "cleanup", "done"]
+    files_total: int = 0
+    files_done: int = 0
+    nodes_added: int = 0
+    nodes_modified: int = 0
+    nodes_removed: int = 0
+    edges_added: int = 0
+    edges_removed: int = 0
+    commit_sha: Optional[str] = None
+    errors: list[str] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+    started_at: Optional[str] = None
+    finished_at: Optional[str] = None
+    elapsed_seconds: float = 0.0
+
+
+class ChangedFile(BaseModel):
+    """One changed file reported by check_repo_changes."""
+
+    path: str
+    status: Literal["added", "modified", "deleted", "renamed"]
+
+
+class CheckRepoChangesInput(BaseModel):
+    """Input for check_repo_changes."""
+
+    repo_url: str
+    repo_slug: str
+    branch: str = "main"
+    patterns: list[str] = Field(
+        default=["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "**/*.cs", "**/*.md"],
+        description="File glob patterns considered relevant.",
+    )
+
+
+class CheckRepoChangesOutput(BaseModel):
+    """Output for check_repo_changes."""
+
+    indexed_sha: Optional[str] = None
+    head_sha: str
+    up_to_date: bool
+    requires_full: bool
+    added: int = 0
+    modified: int = 0
+    deleted: int = 0
+    renamed: int = 0
+    files: list[ChangedFile] = Field(default_factory=list)
+    truncated: bool = False
+    new_commits: int = 0
 
 
 class ReindexFileInput(BaseModel):

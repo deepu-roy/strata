@@ -5,9 +5,11 @@ from typing import Optional
 
 from code_kg.config import Settings
 from code_kg.domain.models import (
+    CheckRepoChangesInput,
     DeleteRepoInput,
     FindDeadCodeInput,
     FindNodesInput,
+    FindNodesOutput,
     GetArchitectureInput,
     GetNodeInput,
     ImpactAnalysisInput,
@@ -16,6 +18,7 @@ from code_kg.domain.models import (
     ReindexFileInput,
 )
 from code_kg.graph.client import Neo4jClient
+from code_kg.mcp.tools import changes as change_tools
 from code_kg.mcp.tools import read as read_tools
 from code_kg.mcp.tools import write as write_tools
 from code_kg.providers.embedding.base import build_embedding_provider
@@ -30,6 +33,29 @@ except ImportError as e:
     ) from e
 
 
+_DEFAULT_PATTERNS = ("**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "**/*.cs", "**/*.md")
+
+
+def _ingest_input(
+    repo_url: str,
+    repo_slug: str,
+    commit_sha: Optional[str],
+    base_commit_sha: Optional[str],
+    branch: str,
+    force_full: bool,
+    patterns: Optional[list[str]],
+) -> IngestRepoInput:
+    return IngestRepoInput(
+        repo_url=repo_url,
+        repo_slug=repo_slug,
+        commit_sha=commit_sha,
+        base_commit_sha=base_commit_sha,
+        branch=branch,
+        force_full=force_full,
+        patterns=patterns or list(_DEFAULT_PATTERNS),
+    )
+
+
 def create_server(settings: Settings) -> "FastMCP":  # type: ignore[name-defined]
     """Build and return a configured FastMCP server instance.
 
@@ -37,7 +63,7 @@ def create_server(settings: Settings) -> "FastMCP":  # type: ignore[name-defined
     - 8 read tools  (find_nodes, get_node, impact_analysis, trace_call_chain,
                      find_tests_for, find_docs_for, find_code_for, semantic_search)
     - 3 Phase-5 tools (list_layers, get_diff, get_repo_state)
-    - 6 write tools (ingest_repo, reindex_file, refresh_summaries, delete_repo,
+    - 9 write tools (ingest_repo, start_ingest_repo, get_ingest_job, check_repo_changes, reindex_file, refresh_summaries, delete_repo,
                      run_test_map, refresh_doc_links)
 
     Also mounts a ``/api/repo-state`` REST GET endpoint that GitHub Actions
@@ -202,6 +228,29 @@ def create_server(settings: Settings) -> "FastMCP":  # type: ignore[name-defined
         """Trace the shortest call chain between two nodes."""
         await graph.connect()
         return await read_tools.trace_call_chain(graph, from_id, to_id, max_depth)
+
+    # ── find_symbols_in_file ──────────────────────────────────────────────────
+
+    @mcp.tool(
+        description=(
+            "List the classes, functions and methods defined in one file. "
+            "Use this to go from a changed file to the symbols whose call graph matters: "
+            "CALLS edges connect symbols, so impact_analysis on a File node returns nothing — "
+            "run it on the symbols returned here instead.\n\n"
+            "EFFICIENCY TIPS:\n"
+            "- file_path is the repo-relative path exactly as in a node's file_path field.\n"
+            "- Pass repo to avoid same-path collisions across repositories."
+        ),
+    )
+    async def find_symbols_in_file(
+        file_path: str,
+        repo: Optional[str] = None,
+        limit: int = 50,
+    ) -> dict:
+        """Symbols defined in a file, in source order."""
+        await graph.connect()
+        nodes = await read_tools.find_symbols_in_file(graph, file_path, repo, limit)
+        return FindNodesOutput(nodes=nodes, total_matched=len(nodes)).model_dump()
 
     # ── find_tests_for ────────────────────────────────────────────────────────
 
@@ -409,7 +458,7 @@ def create_server(settings: Settings) -> "FastMCP":  # type: ignore[name-defined
     async def ingest_repo(
         repo_url: str,
         repo_slug: str,
-        commit_sha: str,
+        commit_sha: Optional[str] = None,
         base_commit_sha: Optional[str] = None,
         branch: str = "main",
         force_full: bool = False,
@@ -417,17 +466,77 @@ def create_server(settings: Settings) -> "FastMCP":  # type: ignore[name-defined
     ) -> dict:
         """Ingest or incrementally update a repository."""
         await graph.connect()
-        inp = IngestRepoInput(
-            repo_url=repo_url,
-            repo_slug=repo_slug,
-            commit_sha=commit_sha,
-            base_commit_sha=base_commit_sha,
-            branch=branch,
-            force_full=force_full,
-            patterns=patterns or ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx",
-                                   "**/*.cs", "**/*.md"],
-        )
+        inp = _ingest_input(repo_url, repo_slug, commit_sha, base_commit_sha,
+                            branch, force_full, patterns)
         result = await write_tools.ingest_repo(graph, settings, inp)
+        return result.model_dump()
+
+    # ── start_ingest_repo / get_ingest_job ────────────────────────────────────
+
+    @mcp.tool(
+        description=(
+            "⚠️ ADMIN/CI TOOL — MODIFIES THE GRAPH. "
+            "Do NOT call this during code analysis or any read-only query. "
+            "Only call when the user explicitly asks to ingest or update a repository.\n\n"
+            "Start an ingest in the background and return immediately with a job_id; "
+            "poll get_ingest_job for progress. Same semantics as ingest_repo "
+            "(commit_sha optional: omitted => tip of `branch`; base_commit_sha for "
+            "incremental). At most one active job per repo_slug: if one is running its "
+            "job_id is returned with already_running=true."
+        ),
+    )
+    async def start_ingest_repo(
+        repo_url: str,
+        repo_slug: str,
+        branch: str = "main",
+        commit_sha: Optional[str] = None,
+        base_commit_sha: Optional[str] = None,
+        force_full: bool = False,
+        patterns: Optional[list[str]] = None,
+    ) -> dict:
+        """Start a background ingest job."""
+        await graph.connect()
+        inp = _ingest_input(repo_url, repo_slug, commit_sha, base_commit_sha,
+                            branch, force_full, patterns)
+        result = await write_tools.start_ingest_repo(graph, settings, inp)
+        return result.model_dump()
+
+    @mcp.tool(
+        description=(
+            "Look up a background ingest job started by start_ingest_repo / ingest_repo. "
+            "Returns status (queued|running|completed|failed), phase "
+            "(queued|cloning|parsing|upserting|cleanup|done), files_done/files_total, "
+            "node/edge counters, commit_sha, errors and notes — or null if the job id is "
+            "unknown or expired (jobs are kept ~1 hour, in memory only)."
+        ),
+    )
+    async def get_ingest_job(job_id: str) -> Optional[dict]:
+        """Return a snapshot of an ingest job (or null)."""
+        snap = write_tools.get_ingest_job(job_id)
+        return snap.model_dump() if snap else None
+
+    @mcp.tool(
+        description=(
+            "Cheap read-only change detection: fetch the repository's remote and compare "
+            "the branch tip with the commit last indexed for repo_slug, WITHOUT re-indexing. "
+            "Returns indexed_sha, head_sha, up_to_date, requires_full (never indexed or the "
+            "indexed commit is no longer reachable), per-status counts, a capped file list "
+            "(200, `truncated`), and new_commits. Use before deciding to call ingest_repo."
+        ),
+    )
+    async def check_repo_changes(
+        repo_url: str,
+        repo_slug: str,
+        branch: str = "main",
+        patterns: Optional[list[str]] = None,
+    ) -> dict:
+        """Report what changed upstream since the last ingest."""
+        await graph.connect()
+        inp = CheckRepoChangesInput(
+            repo_url=repo_url, repo_slug=repo_slug, branch=branch,
+            patterns=patterns or list(_DEFAULT_PATTERNS),
+        )
+        result = await change_tools.check_repo_changes(graph, settings, inp)
         return result.model_dump()
 
     # ── reindex_file ──────────────────────────────────────────────────────────
@@ -566,5 +675,14 @@ def create_server(settings: Settings) -> "FastMCP":  # type: ignore[name-defined
         await graph.connect()
         state = await write_tools.get_repo_state(graph, slug)
         return JSONResponse(state.model_dump())
+
+    @mcp.custom_route("/api/ingest-jobs/{job_id}", methods=["GET"])
+    async def ingest_job_endpoint(request) -> dict:  # type: ignore[type-arg]
+        """GET /api/ingest-jobs/{job_id} — snapshot of an ingest job (404 if unknown)."""
+        from starlette.responses import JSONResponse
+        snap = write_tools.get_ingest_job(request.path_params["job_id"])
+        if snap is None:
+            return JSONResponse({"error": "unknown or expired job"}, status_code=404)
+        return JSONResponse(snap.model_dump())
 
     return mcp

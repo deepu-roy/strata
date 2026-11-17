@@ -1,6 +1,6 @@
 {
   "contract_name": "codekg-graph-contract",
-  "contract_version": "1.0.0",
+  "contract_version": "1.2.0",
   "versioning": "semver. MAJOR: removing/renaming a label, edge type, required property, id format or MCP tool/param/result field. MINOR: additive (new label/edge/optional prop/tool/field). PATCH: docs/ambiguity clarifications.",
   "producer": "code-kg",
   "neo4j": {
@@ -673,6 +673,31 @@
           "node_count",
           "exists"
         ]
+      },
+      {
+        "path": "/api/ingest-jobs/{job_id}",
+        "method": "GET",
+        "params": [],
+        "result": [
+          "job_id",
+          "repo_slug",
+          "status",
+          "phase",
+          "files_total",
+          "files_done",
+          "nodes_added",
+          "nodes_modified",
+          "nodes_removed",
+          "edges_added",
+          "edges_removed",
+          "commit_sha",
+          "errors",
+          "notes",
+          "started_at",
+          "finished_at",
+          "elapsed_seconds"
+        ],
+        "not_found": "404 {error}"
       }
     ],
     "tools": {
@@ -709,6 +734,46 @@
             "type": "boolean",
             "required": false,
             "default": true
+          }
+        },
+        "result": {
+          "model": "FindNodesOutput",
+          "fields": [
+            "nodes",
+            "total_matched"
+          ],
+          "nested": {
+            "nodes[]": [
+              "id",
+              "type",
+              "name",
+              "file_path",
+              "summary",
+              "tags",
+              "layer",
+              "score"
+            ]
+          }
+        }
+      },
+      "find_symbols_in_file": {
+        "stability": "stable",
+        "kind": "read",
+        "params": {
+          "file_path": {
+            "type": "string",
+            "required": true,
+            "default": null
+          },
+          "repo": {
+            "type": "string",
+            "required": false,
+            "default": null
+          },
+          "limit": {
+            "type": "integer",
+            "required": false,
+            "default": 50
           }
         },
         "result": {
@@ -1189,7 +1254,7 @@
           },
           "commit_sha": {
             "type": "string",
-            "required": true,
+            "required": false,
             "default": null
           },
           "base_commit_sha": {
@@ -1224,7 +1289,9 @@
             "edges_added",
             "edges_removed",
             "duration_seconds",
-            "errors"
+            "errors",
+            "notes",
+            "commit_sha"
           ]
         }
       },
@@ -1351,6 +1418,137 @@
         "result": {
           "model": null,
           "fields": null
+        }
+      },
+      "start_ingest_repo": {
+        "stability": "stable",
+        "kind": "write",
+        "params": {
+          "repo_url": {
+            "type": "string",
+            "required": true,
+            "default": null
+          },
+          "repo_slug": {
+            "type": "string",
+            "required": true,
+            "default": null
+          },
+          "branch": {
+            "type": "string",
+            "required": false,
+            "default": "main"
+          },
+          "commit_sha": {
+            "type": "string",
+            "required": false,
+            "default": null
+          },
+          "base_commit_sha": {
+            "type": "string",
+            "required": false,
+            "default": null
+          },
+          "force_full": {
+            "type": "boolean",
+            "required": false,
+            "default": false
+          },
+          "patterns": {
+            "type": "array<string>",
+            "required": false,
+            "default": null
+          }
+        },
+        "result": {
+          "model": "StartIngestOutput",
+          "fields": [
+            "job_id",
+            "status",
+            "already_running"
+          ]
+        }
+      },
+      "get_ingest_job": {
+        "stability": "stable",
+        "kind": "read",
+        "params": {
+          "job_id": {
+            "type": "string",
+            "required": true,
+            "default": null
+          }
+        },
+        "result": {
+          "model": "IngestJobSnapshot",
+          "nullable": true,
+          "fields": [
+            "job_id",
+            "repo_slug",
+            "status",
+            "phase",
+            "files_total",
+            "files_done",
+            "nodes_added",
+            "nodes_modified",
+            "nodes_removed",
+            "edges_added",
+            "edges_removed",
+            "commit_sha",
+            "errors",
+            "notes",
+            "started_at",
+            "finished_at",
+            "elapsed_seconds"
+          ]
+        }
+      },
+      "check_repo_changes": {
+        "stability": "stable",
+        "kind": "read",
+        "params": {
+          "repo_url": {
+            "type": "string",
+            "required": true,
+            "default": null
+          },
+          "repo_slug": {
+            "type": "string",
+            "required": true,
+            "default": null
+          },
+          "branch": {
+            "type": "string",
+            "required": false,
+            "default": "main"
+          },
+          "patterns": {
+            "type": "array<string>",
+            "required": false,
+            "default": null
+          }
+        },
+        "result": {
+          "model": "CheckRepoChangesOutput",
+          "fields": [
+            "indexed_sha",
+            "head_sha",
+            "up_to_date",
+            "requires_full",
+            "added",
+            "modified",
+            "deleted",
+            "renamed",
+            "files",
+            "truncated",
+            "new_commits"
+          ],
+          "nested": {
+            "files[]": [
+              "path",
+              "status"
+            ]
+          }
         }
       }
     }

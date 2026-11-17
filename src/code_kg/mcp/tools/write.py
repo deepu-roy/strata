@@ -4,6 +4,7 @@ All write tools are idempotent where noted (MERGE-based upserts).
 They use the same parse → normalize → upsert pipeline as the CLI.
 """
 
+import asyncio
 import logging
 import uuid
 from pathlib import Path
@@ -12,14 +13,25 @@ from typing import Optional
 from code_kg.config import Settings
 from code_kg.domain.models import (
     DeleteRepoInput,
+    IngestJobSnapshot,
     IngestRepoInput,
     IngestRepoOutput,
     RefreshEnrichmentInput,
     ReindexFileInput,
     RepoStateOutput,
+    StartIngestOutput,
 )
 from code_kg.graph.client import Neo4jClient
 from code_kg.ingestion.cleanup import get_repo_meta, hard_delete_repo
+from code_kg.ingestion.git import (
+    GitError,
+    get_diff,
+    get_head_sha,
+    is_ancestor,
+    redact,
+    sync_repo,
+)
+from code_kg.ingestion.jobs import REGISTRY, IngestJob, IngestProgress
 from code_kg.ingestion.pipeline import (
     EXCLUDE_DIRS,
     extract_files,
@@ -27,6 +39,7 @@ from code_kg.ingestion.pipeline import (
     run_pipeline,
     to_ingest_output,
 )
+from code_kg.ingestion.upsert import soft_delete_file_nodes, upsert_renamed_from_edge
 
 logger = logging.getLogger(__name__)
 
@@ -47,103 +60,125 @@ def _is_local_path(repo_url: str) -> bool:
 
 # ── ingest_repo ───────────────────────────────────────────────────────────────
 
+# Strong refs so fire-and-forget ingest tasks are not garbage collected.
+_BACKGROUND_TASKS: set[asyncio.Task] = set()
 
-async def ingest_repo(
+
+def _failed(job_id: str, error: str, **kw) -> IngestRepoOutput:
+    return IngestRepoOutput(
+        job_id=job_id, status="failed",
+        nodes_added=0, nodes_modified=0, nodes_removed=0,
+        edges_added=0, edges_removed=0, duration_seconds=0.0,
+        errors=[error], **kw,
+    )
+
+
+async def _run_ingest(
     client: Neo4jClient,
     settings: Settings,
     inp: IngestRepoInput,
+    job_id: str,
+    progress: IngestProgress,
 ) -> IngestRepoOutput:
-    """Primary ingestion entry point — supports local paths and GitHub URLs.
+    """The single ingest implementation shared by blocking and async paths.
 
     Workflow:
-    1. If ``repo_url`` is a local path → ingest directly.
-    2. If it is a remote URL:
-       a. Clone/fetch into ``settings.workdir``.
-       b. If ``base_commit_sha`` is set → only process files changed in the diff.
-       c. Otherwise → full ingest.
-    3. Run parse → normalize → upsert → cleanup pipeline.
-    4. Update :Repo node with latest commit SHA and ingest timestamp.
-
-    Args:
-        client: Connected Neo4j client.
-        settings: Application settings (workdir, patterns, etc.).
-        inp: Ingest parameters.
-
-    Returns:
-        IngestRepoOutput with job stats.
+    1. Local path -> ingest in place. Remote URL -> ``sync_repo`` (clone/fetch,
+       move the working tree to ``commit_sha`` or the branch tip, verify HEAD).
+    2. With ``base_commit_sha`` (and not ``force_full``) only the diff is
+       processed; an unreachable base (force-push) falls back to a full ingest
+       and adds a note.
+    3. parse -> normalize -> upsert -> cleanup; the :Repo node records the
+       ACTUAL head sha.
     """
-    job_id = _job_id()
+    notes: list[str] = []
     logger.info(
         f"[{job_id}] ingest_repo start: repo={inp.repo_slug} "
-        f"commit={inp.commit_sha[:8]} force_full={inp.force_full}"
+        f"commit={(inp.commit_sha or 'branch:' + inp.branch)[:40]} "
+        f"force_full={inp.force_full}"
     )
 
+    def _with_meta(out: IngestRepoOutput, sha: Optional[str]) -> IngestRepoOutput:
+        out.notes = notes + [n for n in out.notes if n not in notes]
+        out.commit_sha = sha
+        return out
+
     try:
-        # ── Resolve repo path ─────────────────────────────────────────────────
+        # ── Resolve repo path + head sha ──────────────────────────────────────
+        head_sha: Optional[str] = inp.commit_sha
         if _is_local_path(inp.repo_url):
             repo_path = Path(inp.repo_url.replace("file://", ""))
             if not repo_path.is_dir():
-                return IngestRepoOutput(
-                    job_id=job_id, status="failed",
-                    nodes_added=0, nodes_modified=0, nodes_removed=0,
-                    edges_added=0, edges_removed=0, duration_seconds=0.0,
-                    errors=[f"Local path does not exist: {inp.repo_url}"],
-                )
+                return _failed(job_id, f"Local path does not exist: {inp.repo_url}")
+            if head_sha is None:
+                try:
+                    head_sha = get_head_sha(repo_path)
+                except GitError:
+                    head_sha = None  # plain directory, not a git repo
         else:
-            from code_kg.ingestion.git import clone_or_fetch
-            workdir = Path(settings.workdir)
-            repo_path = clone_or_fetch(inp.repo_url, workdir)
+            progress.set_phase("cloning")
+            repo_path, head_sha = await asyncio.to_thread(
+                sync_repo,
+                inp.repo_url,
+                Path(settings.workdir),
+                branch=inp.branch,
+                commit_sha=inp.commit_sha,
+            )
+        progress.set_commit(head_sha)
 
         # ── Determine file list ───────────────────────────────────────────────
         explicit_files: Optional[list[str]] = None
-        diff = None
 
-        if not inp.force_full and inp.base_commit_sha:
-            try:
-                from code_kg.ingestion.git import get_diff
-                diff = get_diff(repo_path, inp.base_commit_sha, inp.commit_sha)
-                explicit_files = [
-                    f for f in diff.changed
-                    if any(f.endswith(ext) for pat in inp.patterns
-                           for ext in pat_to_extensions(pat))
-                    and not any(part in EXCLUDE_DIRS for part in Path(f).parts)
-                ]
-                logger.info(
-                    f"[{job_id}] Incremental: {len(explicit_files)} changed files "
-                    f"(added={len(diff.added)}, modified={len(diff.modified)}, "
-                    f"deleted={len(diff.deleted)}, renamed={len(diff.renamed)})"
+        if not inp.force_full and inp.base_commit_sha and head_sha:
+            if not await asyncio.to_thread(
+                is_ancestor, repo_path, inp.base_commit_sha, head_sha
+            ):
+                msg = (
+                    f"base_commit_sha {inp.base_commit_sha[:12]} is not reachable from "
+                    f"{head_sha[:12]} (force-push or unknown commit); fell back to a full ingest"
                 )
-
-                # ── Handle deleted files — soft-delete their nodes ────────────
-                if diff.deleted:
-                    from code_kg.ingestion.upsert import soft_delete_file_nodes
-                    for deleted_path in diff.deleted:
-                        await soft_delete_file_nodes(client, inp.repo_slug, deleted_path)
-
-                # ── Handle renamed files — soft-delete old, emit RENAMED_FROM ─
-                if diff.renamed:
-                    from code_kg.ingestion.upsert import (
-                        soft_delete_file_nodes,
-                        upsert_renamed_from_edge,
+                logger.warning(f"[{job_id}] {msg}")
+                notes.append(msg)
+            else:
+                try:
+                    diff = get_diff(repo_path, inp.base_commit_sha, head_sha)
+                    explicit_files = [
+                        f for f in diff.changed
+                        if any(f.endswith(ext) for pat in inp.patterns
+                               for ext in pat_to_extensions(pat))
+                        and not any(part in EXCLUDE_DIRS for part in Path(f).parts)
+                    ]
+                    logger.info(
+                        f"[{job_id}] Incremental: {len(explicit_files)} changed files "
+                        f"(added={len(diff.added)}, modified={len(diff.modified)}, "
+                        f"deleted={len(diff.deleted)}, renamed={len(diff.renamed)})"
                     )
+
+                    # ── Handle deleted files — soft-delete their nodes ────────
+                    if diff.deleted:
+                        for deleted_path in diff.deleted:
+                            await soft_delete_file_nodes(client, inp.repo_slug, deleted_path)
+
+                    # ── Handle renamed files — soft-delete old, emit RENAMED_FROM
                     for old_path, new_path in diff.renamed:
                         await soft_delete_file_nodes(client, inp.repo_slug, old_path)
                         ok = await upsert_renamed_from_edge(
-                            client, inp.repo_slug, old_path, new_path, inp.commit_sha
+                            client, inp.repo_slug, old_path, new_path, head_sha
                         )
                         if ok:
                             logger.info(f"[{job_id}] Rename edge: {old_path} → {new_path}")
 
-                if not explicit_files and not diff.deleted and not diff.renamed:
-                    logger.info(f"[{job_id}] No relevant file changes — skipping ingest")
-                    return IngestRepoOutput(
-                        job_id=job_id, status="completed",
-                        nodes_added=0, nodes_modified=0, nodes_removed=0,
-                        edges_added=0, edges_removed=0, duration_seconds=0.0,
-                    )
-            except Exception as e:
-                logger.warning(f"[{job_id}] Diff failed, falling back to full ingest: {e}")
-                explicit_files = None
+                    if not explicit_files and not diff.deleted and not diff.renamed:
+                        logger.info(f"[{job_id}] No relevant file changes — skipping ingest")
+                        return _with_meta(IngestRepoOutput(
+                            job_id=job_id, status="completed",
+                            nodes_added=0, nodes_modified=0, nodes_removed=0,
+                            edges_added=0, edges_removed=0, duration_seconds=0.0,
+                        ), head_sha)
+                except Exception as e:
+                    logger.warning(f"[{job_id}] Diff failed, falling back to full ingest: {e}")
+                    notes.append(f"diff failed ({redact(str(e))[:200]}); fell back to a full ingest")
+                    explicit_files = None
 
         # ── Run pipeline ──────────────────────────────────────────────────────
         changed_files = set(explicit_files) if explicit_files else None
@@ -152,13 +187,14 @@ async def ingest_repo(
             repo_path=repo_path,
             repo_slug=inp.repo_slug,
             patterns=inp.patterns,
-            commit_sha=inp.commit_sha,
+            commit_sha=head_sha,
             explicit_files=explicit_files,
             changed_files=changed_files,
             do_soft_delete=True,
+            progress=progress,
         )
 
-        output = to_ingest_output(job_id, result)
+        output = _with_meta(to_ingest_output(job_id, result), head_sha)
         logger.info(
             f"[{job_id}] ingest_repo done: status={output.status} "
             f"nodes={output.nodes_added} edges={output.edges_added} "
@@ -167,13 +203,100 @@ async def ingest_repo(
         return output
 
     except Exception as e:
-        logger.error(f"[{job_id}] ingest_repo failed: {e}", exc_info=True)
+        err = redact(str(e))
+        logger.error(f"[{job_id}] ingest_repo failed: {err}", exc_info=True)
+        return _with_meta(_failed(job_id, err), None)
+
+
+async def _execute_job(
+    job: IngestJob,
+    client: Neo4jClient,
+    settings: Settings,
+    inp: IngestRepoInput,
+) -> IngestRepoOutput:
+    """Run the core under *job*, always leaving it in a terminal state."""
+    job.status = "running"
+    try:
+        out = await _run_ingest(client, settings, inp, job.job_id, job)
+    except BaseException as e:  # incl. cancellation: never leave a job "running"
+        job.finish("failed", errors=[redact(f"{type(e).__name__}: {e}")])
+        raise
+    job.nodes_added = out.nodes_added
+    job.nodes_modified = out.nodes_modified
+    job.nodes_removed = out.nodes_removed
+    job.edges_added = out.edges_added
+    job.edges_removed = out.edges_removed
+    if out.commit_sha:
+        job.commit_sha = out.commit_sha
+    for n in out.notes:
+        job.note(n)
+    if out.status == "completed":
+        job.file_done(job.files_total)
+    job.finish("failed" if out.status == "failed" else "completed", errors=out.errors)
+    return out
+
+
+async def ingest_repo(
+    client: Neo4jClient,
+    settings: Settings,
+    inp: IngestRepoInput,
+) -> IngestRepoOutput:
+    """Blocking ingest — runs to completion and returns the stats.
+
+    Remote URLs are cloned/fetched and checked out at ``commit_sha`` (or the tip
+    of ``branch``).  The run is registered as a job (``job_id`` in the output)
+    so ``get_ingest_job`` can report on it.  If a job for the same repo is
+    already active, nothing new is started: the existing job id is returned
+    with status ``queued`` and a note.
+    """
+    job, created = REGISTRY.start(inp.repo_slug)
+    if not created:
         return IngestRepoOutput(
-            job_id=job_id, status="failed",
+            job_id=job.job_id, status="queued",
             nodes_added=0, nodes_modified=0, nodes_removed=0,
             edges_added=0, edges_removed=0, duration_seconds=0.0,
-            errors=[str(e)],
+            notes=[(
+                f"an ingest for '{inp.repo_slug}' is already running; "
+                "poll get_ingest_job with this job_id"
+            )],
         )
+    return await _execute_job(job, client, settings, inp)
+
+
+async def start_ingest_repo(
+    client: Neo4jClient,
+    settings: Settings,
+    inp: IngestRepoInput,
+) -> StartIngestOutput:
+    """Start an ingest in the background and return immediately.
+
+    One active job per repo_slug: when one exists its id is returned with
+    ``already_running=True``.  Failures are captured into the job.
+    """
+    job, created = REGISTRY.start(inp.repo_slug)
+    if not created:
+        return StartIngestOutput(
+            job_id=job.job_id, status=job.status, already_running=True  # type: ignore[arg-type]
+        )
+
+    async def _bg() -> None:
+        try:
+            await _execute_job(job, client, settings, inp)
+        except BaseException as e:  # job already marked failed in _execute_job
+            logger.error(f"[{job.job_id}] background ingest crashed: {redact(str(e))}")
+            if not isinstance(e, Exception):
+                raise
+
+    task = asyncio.create_task(_bg())
+    _BACKGROUND_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_TASKS.discard)
+    return StartIngestOutput(job_id=job.job_id, status="queued", already_running=False)
+
+
+def get_ingest_job(job_id: str) -> Optional[IngestJobSnapshot]:
+    """Return a snapshot of an ingest job, or None if unknown/expired."""
+    job = REGISTRY.get(job_id)
+    return job.snapshot() if job else None
 
 
 # pat_to_extensions is imported as pat_to_extensions at module level above

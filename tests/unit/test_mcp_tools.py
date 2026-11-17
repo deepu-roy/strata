@@ -273,3 +273,42 @@ class TestTraceCallChain:
         client = _make_client([])
         result = await trace_call_chain(client, "a", "b")
         assert result is None
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# find_symbols_in_file
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestFindSymbolsInFile:
+    async def test_returns_symbols_and_passes_scoped_params(self):
+        from code_kg.mcp.tools.read import find_symbols_in_file
+
+        row = {
+            "id": "function:shop:src/pay.py:pay(card)",
+            "labels": ["Function", "CodeNode"],
+            "name": "pay",
+            "repo": "shop",
+            "filePath": "src/pay.py",
+            "summary": "Charges a card",
+            "tags": [],
+            "layer": None,
+        }
+        client = _make_client([row])
+
+        result = await find_symbols_in_file(client, "src/pay.py", repo="Shop", limit=10)
+
+        assert [(n.name, n.type, n.file_path) for n in result] == [("pay", "Function", "src/pay.py")]
+        params = client.execute_query.await_args.args[1]
+        assert params == {"file_path": "src/pay.py", "repo": "Shop", "limit": 10}
+
+    async def test_limit_is_clamped(self):
+        from code_kg.mcp.tools.read import find_symbols_in_file
+
+        client = _make_client([])
+        await find_symbols_in_file(client, "a.py", limit=10_000)
+        assert client.execute_query.await_args.args[1]["limit"] == 200
+
+    async def test_excludes_the_file_node_itself(self):
+        from code_kg.graph import queries as Q
+
+        assert "NOT n:File" in Q.FIND_SYMBOLS_IN_FILE

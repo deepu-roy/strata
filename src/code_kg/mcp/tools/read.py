@@ -315,6 +315,36 @@ async def find_tests_for(
     return [n for n in (_row_to_found_node(shape_node_for_list(r)) for r in rows) if n]
 
 
+# ── find_symbols_in_file ──────────────────────────────────────────────────────
+
+async def find_symbols_in_file(
+    client: Neo4jClient,
+    file_path: str,
+    repo: Optional[str] = None,
+    limit: int = 50,
+) -> list[FoundNode]:
+    """Return the classes, functions and methods defined in one file.
+
+    This is the bridge from "this file changed" to the call-graph tools: CALLS edges live
+    between symbols, so ``impact_analysis`` on a File node is empty — callers need the symbols.
+
+    Args:
+        client: Neo4j client.
+        file_path: Repo-relative POSIX path, exactly as stored (``filePath``).
+        repo: Repo name (case-insensitive); None matches any repo.
+        limit: Maximum symbols to return.
+
+    Returns:
+        FoundNode list ordered by position in the file.
+    """
+    rows = await client.execute_query(Q.FIND_SYMBOLS_IN_FILE, {
+        "file_path": file_path,
+        "repo": repo,
+        "limit": max(1, min(limit, 200)),
+    })
+    return [n for n in (_row_to_found_node(shape_node_for_list(r)) for r in rows) if n]
+
+
 # ── find_docs_for ────────────────────────────────────────────────────────────
 
 
