@@ -1,0 +1,1375 @@
+{
+  "contract_name": "codekg-graph-contract",
+  "contract_version": "1.0.0",
+  "versioning": "semver. MAJOR: removing/renaming a label, edge type, required property, id format or MCP tool/param/result field. MINOR: additive (new label/edge/optional prop/tool/field). PATCH: docs/ambiguity clarifications.",
+  "producer": "code-kg",
+  "neo4j": {
+    "min_version": "5.11",
+    "tested_with": "5.15",
+    "database_property": "default 'neo4j'; configured via NEO4J__DATABASE"
+  },
+  "repo_semantics": {
+    "property": "repo",
+    "description": "String namespace set verbatim from the ingest 'repo' slug; appears in every node id and in the 'repo' property of all CodeNode/DocNode/Layer/Module nodes. Repo nodes expose it as 'name' with id 'repo:<name>'.",
+    "consumer_normalisation": "Compare repos as: take last '/'-separated segment, lower-case, strip trailing '.git'.",
+    "case_preserved": true
+  },
+  "file_path_semantics": {
+    "property": "filePath",
+    "mcp_field": "file_path",
+    "description": "Path relative to the ingested repo root, POSIX separators, no leading './' or '/'. File nodes carry the path itself; every symbol node carries the path of its file. Empty string for non-file nodes (Repo/Layer/Module have none).",
+    "example": "src/app/app.service.ts"
+  },
+  "node_labels": {
+    "Repo": {
+      "labels": [
+        "Repo"
+      ],
+      "id_prefix": "repo:",
+      "id_format": "repo:<repo>",
+      "id_example": "repo:myrepo",
+      "emitted_by_pipeline": true,
+      "required": {
+        "id": "string",
+        "name": "string",
+        "created_at": "datetime"
+      },
+      "optional": {
+        "last_commit_sha": "string",
+        "last_ingest_at": "datetime",
+        "source_path": "string (absolute path on the ingesting host)"
+      },
+      "notes": "Has no 'repo' property; its 'name' is the repo name."
+    },
+    "File": {
+      "labels": [
+        "File",
+        "CodeNode"
+      ],
+      "id_prefix": "file:",
+      "id_format": "file:<repo>:<path>",
+      "id_example": "file:myrepo:src/app.ts",
+      "emitted_by_pipeline": true,
+      "required": {
+        "id": "string",
+        "name": "string",
+        "repo": "string",
+        "filePath": "string",
+        "nameTokens": "string",
+        "language": "string",
+        "signature": "string",
+        "signatureHash": "string",
+        "fileHash": "string",
+        "created_at": "datetime",
+        "updated_at": "datetime"
+      },
+      "optional": {
+        "lineRange": "list<integer>[2]",
+        "layer": "string|null",
+        "summary": "string",
+        "tags": "list<string>",
+        "complexity": "string",
+        "summary_embedding": "list<float>",
+        "last_seen_commit": "string",
+        "deleted_at": "datetime"
+      }
+    },
+    "Class": {
+      "labels": [
+        "Class",
+        "CodeNode"
+      ],
+      "id_prefix": "class:",
+      "id_format": "class:<repo>:<path>:<Name>",
+      "id_example": "class:myrepo:src/app.ts:AppService",
+      "emitted_by_pipeline": true,
+      "required": {
+        "id": "string",
+        "name": "string",
+        "repo": "string",
+        "filePath": "string",
+        "nameTokens": "string",
+        "language": "string",
+        "signature": "string",
+        "signatureHash": "string",
+        "fileHash": "string",
+        "created_at": "datetime",
+        "updated_at": "datetime"
+      },
+      "optional": {
+        "lineRange": "list<integer>[2]",
+        "layer": "string|null",
+        "summary": "string",
+        "tags": "list<string>",
+        "complexity": "string",
+        "summary_embedding": "list<float>",
+        "last_seen_commit": "string",
+        "deleted_at": "datetime"
+      }
+    },
+    "Interface": {
+      "labels": [
+        "Interface",
+        "CodeNode"
+      ],
+      "id_prefix": "interface:",
+      "id_format": "interface:<repo>:<path>:<Name>",
+      "id_example": "interface:myrepo:src/app.ts:IApp",
+      "emitted_by_pipeline": true,
+      "required": {
+        "id": "string",
+        "name": "string",
+        "repo": "string",
+        "filePath": "string",
+        "nameTokens": "string",
+        "language": "string",
+        "signature": "string",
+        "signatureHash": "string",
+        "fileHash": "string",
+        "created_at": "datetime",
+        "updated_at": "datetime"
+      },
+      "optional": {
+        "lineRange": "list<integer>[2]",
+        "layer": "string|null",
+        "summary": "string",
+        "tags": "list<string>",
+        "complexity": "string",
+        "summary_embedding": "list<float>",
+        "last_seen_commit": "string",
+        "deleted_at": "datetime"
+      }
+    },
+    "Function": {
+      "labels": [
+        "Function",
+        "CodeNode"
+      ],
+      "id_prefix": "function:",
+      "id_format": "function:<repo>:<path>:<name>:<sig4>",
+      "id_example": "function:myrepo:src/app.ts:formatDate:32fc",
+      "emitted_by_pipeline": true,
+      "required": {
+        "id": "string",
+        "name": "string",
+        "repo": "string",
+        "filePath": "string",
+        "nameTokens": "string",
+        "language": "string",
+        "signature": "string",
+        "signatureHash": "string",
+        "fileHash": "string",
+        "created_at": "datetime",
+        "updated_at": "datetime"
+      },
+      "optional": {
+        "lineRange": "list<integer>[2]",
+        "layer": "string|null",
+        "summary": "string",
+        "tags": "list<string>",
+        "complexity": "string",
+        "summary_embedding": "list<float>",
+        "last_seen_commit": "string",
+        "deleted_at": "datetime"
+      },
+      "notes": "Also used for class methods (no Method nodes are emitted); sig4 = first 4 hex chars of sha1 of the whitespace-normalised signature."
+    },
+    "Method": {
+      "labels": [
+        "Method",
+        "CodeNode"
+      ],
+      "id_prefix": "method:",
+      "id_format": "method:<repo>:<path>:<Class>:<name>:<sig4>",
+      "id_example": "method:myrepo:src/app.ts:AppService:run:ab12",
+      "emitted_by_pipeline": false,
+      "required": {
+        "id": "string",
+        "name": "string",
+        "repo": "string",
+        "filePath": "string",
+        "nameTokens": "string",
+        "language": "string",
+        "signature": "string",
+        "signatureHash": "string",
+        "fileHash": "string",
+        "created_at": "datetime",
+        "updated_at": "datetime"
+      },
+      "optional": {
+        "lineRange": "list<integer>[2]",
+        "layer": "string|null",
+        "summary": "string",
+        "tags": "list<string>",
+        "complexity": "string",
+        "summary_embedding": "list<float>",
+        "last_seen_commit": "string",
+        "deleted_at": "datetime"
+      },
+      "notes": "Declared (label, constraint, builder) but never produced by the pipeline."
+    },
+    "Enum": {
+      "labels": [
+        "Enum",
+        "CodeNode"
+      ],
+      "id_prefix": "class:",
+      "id_format": "class:<repo>:<path>:<Name>",
+      "id_example": "class:myrepo:src/a.ts:Color",
+      "emitted_by_pipeline": false,
+      "required": {
+        "id": "string",
+        "name": "string",
+        "repo": "string",
+        "filePath": "string",
+        "nameTokens": "string",
+        "language": "string",
+        "signature": "string",
+        "signatureHash": "string",
+        "fileHash": "string",
+        "created_at": "datetime",
+        "updated_at": "datetime"
+      },
+      "optional": {
+        "lineRange": "list<integer>[2]",
+        "layer": "string|null",
+        "summary": "string",
+        "tags": "list<string>",
+        "complexity": "string",
+        "summary_embedding": "list<float>",
+        "last_seen_commit": "string",
+        "deleted_at": "datetime"
+      },
+      "notes": "No source emits enums; if normalised, the id would use the 'class:' prefix. No uniqueness constraint exists for Enum."
+    },
+    "Endpoint": {
+      "labels": [
+        "Endpoint",
+        "CodeNode"
+      ],
+      "id_prefix": "endpoint:",
+      "id_format": "endpoint:<repo>:<VERB>:<route>",
+      "id_example": "endpoint:myrepo:GET:/users",
+      "emitted_by_pipeline": false,
+      "required": {
+        "id": "string",
+        "name": "string",
+        "repo": "string",
+        "filePath": "string",
+        "nameTokens": "string",
+        "language": "string",
+        "signature": "string",
+        "signatureHash": "string",
+        "fileHash": "string",
+        "created_at": "datetime",
+        "updated_at": "datetime"
+      },
+      "optional": {
+        "lineRange": "list<integer>[2]",
+        "layer": "string|null",
+        "summary": "string",
+        "tags": "list<string>",
+        "complexity": "string",
+        "summary_embedding": "list<float>",
+        "last_seen_commit": "string",
+        "deleted_at": "datetime"
+      },
+      "notes": "Declared only."
+    },
+    "Document": {
+      "labels": [
+        "Document",
+        "DocNode"
+      ],
+      "id_prefix": "doc:",
+      "id_format": "doc:<repo>:<path>",
+      "id_example": "doc:myrepo:docs/README.md",
+      "emitted_by_pipeline": true,
+      "required": {
+        "id": "string",
+        "name": "string",
+        "repo": "string",
+        "filePath": "string",
+        "nameTokens": "string",
+        "language": "string",
+        "signature": "string",
+        "signatureHash": "string",
+        "fileHash": "string",
+        "created_at": "datetime",
+        "updated_at": "datetime"
+      },
+      "optional": {
+        "summary": "string",
+        "tags": "list<string>",
+        "complexity": "string",
+        "summary_embedding": "list<float>",
+        "last_seen_commit": "string",
+        "deleted_at": "datetime"
+      }
+    },
+    "Section": {
+      "labels": [
+        "Section",
+        "DocNode"
+      ],
+      "id_prefix": "doc:",
+      "id_format": "doc:<repo>:<path>#<heading-slug>",
+      "id_example": "doc:myrepo:docs/README.md#installation",
+      "emitted_by_pipeline": true,
+      "required": {
+        "id": "string",
+        "name": "string",
+        "repo": "string",
+        "filePath": "string",
+        "nameTokens": "string",
+        "language": "string",
+        "signature": "string",
+        "signatureHash": "string",
+        "fileHash": "string",
+        "created_at": "datetime",
+        "updated_at": "datetime"
+      },
+      "optional": {
+        "summary": "string",
+        "tags": "list<string>",
+        "complexity": "string",
+        "summary_embedding": "list<float>",
+        "last_seen_commit": "string",
+        "deleted_at": "datetime"
+      },
+      "notes": "Shares the 'doc:' prefix with Document; distinguish by '#' or by label."
+    },
+    "Layer": {
+      "labels": [
+        "Layer"
+      ],
+      "id_prefix": "layer:",
+      "id_format": "layer:<repo>:<layer-name>",
+      "id_example": "layer:myrepo:service",
+      "emitted_by_pipeline": true,
+      "required": {
+        "id": "string",
+        "name": "string",
+        "repo": "string",
+        "created_at": "datetime"
+      },
+      "optional": {}
+    },
+    "Module": {
+      "labels": [
+        "Module"
+      ],
+      "id_prefix": "module:",
+      "id_format": "module:<repo>:<import-path>",
+      "id_example": "module:myrepo:System",
+      "emitted_by_pipeline": true,
+      "required": {
+        "id": "string",
+        "name": "string",
+        "repo": "string",
+        "external": "boolean",
+        "created_at": "datetime"
+      },
+      "optional": {},
+      "notes": "Placeholder for non-relative imports. Not a CodeNode."
+    },
+    "Concept": {
+      "labels": [
+        "Concept"
+      ],
+      "id_prefix": "concept:",
+      "id_format": "concept:<repo>:<slug>",
+      "id_example": "concept:myrepo:auth",
+      "emitted_by_pipeline": false,
+      "required": {
+        "id": "string"
+      },
+      "optional": {},
+      "notes": "Declared only (constraint exists)."
+    }
+  },
+  "cross_labels": {
+    "CodeNode": "all code symbols and File nodes",
+    "DocNode": "Document and Section nodes"
+  },
+  "edge_types": {
+    "IN_REPO": {
+      "from": [
+        "CodeNode",
+        "DocNode"
+      ],
+      "to": [
+        "Repo"
+      ],
+      "meaning": "Node belongs to repo.",
+      "emitted_by": "ingest",
+      "properties": {}
+    },
+    "BELONGS_TO_LAYER": {
+      "from": [
+        "CodeNode"
+      ],
+      "to": [
+        "Layer"
+      ],
+      "meaning": "Node classified into architectural layer (derived from path/name heuristics).",
+      "emitted_by": "ingest",
+      "properties": {}
+    },
+    "IMPORTS": {
+      "from": [
+        "File"
+      ],
+      "to": [
+        "File",
+        "Module"
+      ],
+      "meaning": "File imports another file (relative) or an external module placeholder.",
+      "emitted_by": "ingest",
+      "properties": {
+        "weight": "float",
+        "unresolved": "boolean",
+        "created_at": "datetime"
+      }
+    },
+    "CALLS": {
+      "from": [
+        "Function",
+        "Method"
+      ],
+      "to": [
+        "Function",
+        "Method"
+      ],
+      "meaning": "Caller -> callee; only resolved intra-repo calls are persisted.",
+      "emitted_by": "ingest",
+      "properties": {
+        "weight": "float",
+        "unresolved": "boolean",
+        "created_at": "datetime"
+      }
+    },
+    "INHERITS": {
+      "from": [
+        "Class",
+        "Interface"
+      ],
+      "to": [
+        "Class",
+        "Interface"
+      ],
+      "meaning": "Child -> parent type.",
+      "emitted_by": "ingest",
+      "properties": {
+        "weight": "float",
+        "unresolved": "boolean",
+        "created_at": "datetime"
+      }
+    },
+    "IMPLEMENTS": {
+      "from": [
+        "Class"
+      ],
+      "to": [
+        "Interface"
+      ],
+      "meaning": "Class -> implemented interface.",
+      "emitted_by": "ingest",
+      "properties": {
+        "weight": "float",
+        "unresolved": "boolean",
+        "created_at": "datetime"
+      }
+    },
+    "HAS_SECTION": {
+      "from": [
+        "Document"
+      ],
+      "to": [
+        "Section"
+      ],
+      "meaning": "Document contains section.",
+      "emitted_by": "ingest",
+      "properties": {
+        "weight": "float",
+        "unresolved": "boolean",
+        "created_at": "datetime"
+      }
+    },
+    "LINKS_TO": {
+      "from": [
+        "Document"
+      ],
+      "to": [
+        "Document"
+      ],
+      "meaning": "Markdown link between docs.",
+      "emitted_by": "ingest",
+      "properties": {
+        "weight": "float",
+        "unresolved": "boolean",
+        "created_at": "datetime"
+      }
+    },
+    "TESTS": {
+      "from": [
+        "CodeNode"
+      ],
+      "to": [
+        "CodeNode"
+      ],
+      "meaning": "Test node -> production node under test; weight = heuristic confidence.",
+      "emitted_by": "test-map",
+      "properties": {
+        "weight": "float"
+      }
+    },
+    "DOCUMENTS": {
+      "from": [
+        "Section"
+      ],
+      "to": [
+        "CodeNode"
+      ],
+      "meaning": "Doc section -> code it describes; weight = confidence.",
+      "emitted_by": "link-docs",
+      "properties": {
+        "weight": "float"
+      }
+    },
+    "RENAMED_FROM": {
+      "from": [
+        "File"
+      ],
+      "to": [
+        "File"
+      ],
+      "meaning": "Direction is OLD file -> NEW file despite the name (see Known ambiguities).",
+      "emitted_by": "reindex",
+      "properties": {
+        "created_at": "datetime",
+        "commit_sha": "string"
+      }
+    },
+    "MENTIONS": {
+      "from": [
+        "Section"
+      ],
+      "to": [
+        "CodeNode"
+      ],
+      "meaning": "Doc section mentions symbol by name. Declared and queried, but the ingest path currently defers and never persists these edges.",
+      "emitted_by": "never",
+      "properties": {}
+    },
+    "INSTANTIATES": {
+      "from": [
+        "Function",
+        "Method"
+      ],
+      "to": [
+        "Class"
+      ],
+      "meaning": "Declared and queried by trace_call_chain; never emitted.",
+      "emitted_by": "never",
+      "properties": {}
+    },
+    "CONTAINS": {
+      "from": [],
+      "to": [],
+      "meaning": "Declared only.",
+      "emitted_by": "never",
+      "properties": {}
+    },
+    "DEFINES": {
+      "from": [],
+      "to": [],
+      "meaning": "Declared only.",
+      "emitted_by": "never",
+      "properties": {}
+    },
+    "EXTENDS": {
+      "from": [],
+      "to": [],
+      "meaning": "Declared only (INHERITS is used).",
+      "emitted_by": "never",
+      "properties": {}
+    },
+    "REFERENCES": {
+      "from": [],
+      "to": [],
+      "meaning": "Declared only; upsert fallback type when an edge has no type.",
+      "emitted_by": "never",
+      "properties": {}
+    },
+    "EXPOSES_ENDPOINT": {
+      "from": [],
+      "to": [],
+      "meaning": "Declared only.",
+      "emitted_by": "never",
+      "properties": {}
+    },
+    "CALLS_HTTP": {
+      "from": [],
+      "to": [],
+      "meaning": "Declared only.",
+      "emitted_by": "never",
+      "properties": {}
+    }
+  },
+  "constraints": {
+    "uniqueness": [
+      "file_id:File.id",
+      "class_id:Class.id",
+      "interface_id:Interface.id",
+      "function_id:Function.id",
+      "method_id:Method.id",
+      "endpoint_id:Endpoint.id",
+      "document_id:Document.id",
+      "section_id:Section.id",
+      "layer_id:Layer.id",
+      "concept_id:Concept.id",
+      "repo_id:Repo.id"
+    ],
+    "btree_indexes": [
+      "node_repo:CodeNode.repo",
+      "node_filepath:CodeNode.filePath",
+      "node_last_seen:CodeNode.last_seen_commit",
+      "doc_repo:DocNode.repo"
+    ],
+    "fulltext_indexes": [
+      "code_search:CodeNode[name,nameTokens,summary,signature]",
+      "doc_search:DocNode[name,summary,content,heading]"
+    ],
+    "vector_indexes": [
+      "code_embeddings:CodeNode.summary_embedding(cosine)",
+      "doc_embeddings:DocNode.summary_embedding(cosine)"
+    ],
+    "data_fixes": [
+      "CodeNode.layer '' -> NULL",
+      "CodeNode.nameTokens backfill"
+    ]
+  },
+  "mcp": {
+    "default_http_port": 8765,
+    "port_env": "MCP_HTTP_PORT",
+    "host_env": "MCP_HTTP_HOST",
+    "transports": [
+      "stdio",
+      "streamable-http"
+    ],
+    "http_path": "/mcp",
+    "extra_rest": [
+      {
+        "path": "/api/repo-state",
+        "method": "GET",
+        "params": [
+          "slug"
+        ],
+        "result": [
+          "repo_slug",
+          "last_commit_sha",
+          "last_ingest_at",
+          "node_count",
+          "exists"
+        ]
+      }
+    ],
+    "tools": {
+      "find_nodes": {
+        "stability": "stable",
+        "kind": "read",
+        "params": {
+          "query": {
+            "type": "string",
+            "required": true,
+            "default": null
+          },
+          "types": {
+            "type": "array<string>",
+            "required": false,
+            "default": null
+          },
+          "repos": {
+            "type": "array<string>",
+            "required": false,
+            "default": null
+          },
+          "layers": {
+            "type": "array<string>",
+            "required": false,
+            "default": null
+          },
+          "limit": {
+            "type": "integer",
+            "required": false,
+            "default": 10
+          },
+          "use_semantic": {
+            "type": "boolean",
+            "required": false,
+            "default": true
+          }
+        },
+        "result": {
+          "model": "FindNodesOutput",
+          "fields": [
+            "nodes",
+            "total_matched"
+          ],
+          "nested": {
+            "nodes[]": [
+              "id",
+              "type",
+              "name",
+              "file_path",
+              "summary",
+              "tags",
+              "layer",
+              "score"
+            ]
+          }
+        }
+      },
+      "get_node": {
+        "stability": "stable",
+        "kind": "read",
+        "params": {
+          "id": {
+            "type": "string",
+            "required": true,
+            "default": null
+          },
+          "include_neighbors": {
+            "type": "boolean",
+            "required": false,
+            "default": true
+          },
+          "neighbor_edge_types": {
+            "type": "array<string>",
+            "required": false,
+            "default": null
+          },
+          "max_neighbors": {
+            "type": "integer",
+            "required": false,
+            "default": 20
+          }
+        },
+        "result": {
+          "model": "NodeDetail",
+          "nullable": true,
+          "fields": [
+            "id",
+            "type",
+            "name",
+            "summary",
+            "tags",
+            "layer",
+            "file_path",
+            "line_range",
+            "signature",
+            "neighbors"
+          ],
+          "nested": {
+            "neighbors[]": [
+              "id",
+              "type",
+              "name",
+              "edge_type",
+              "edge_weight"
+            ]
+          }
+        }
+      },
+      "impact_analysis": {
+        "stability": "stable",
+        "kind": "read",
+        "params": {
+          "id": {
+            "type": "string",
+            "required": true,
+            "default": null
+          },
+          "max_depth": {
+            "type": "integer",
+            "required": false,
+            "default": 3
+          },
+          "include_tests": {
+            "type": "boolean",
+            "required": false,
+            "default": true
+          },
+          "include_docs": {
+            "type": "boolean",
+            "required": false,
+            "default": true
+          }
+        },
+        "result": {
+          "model": "ImpactAnalysisOutput",
+          "nullable": true,
+          "fields": [
+            "target",
+            "upstream",
+            "downstream",
+            "tests",
+            "docs",
+            "layer_breakdown"
+          ],
+          "nested": {
+            "target": [
+              "id",
+              "type",
+              "name",
+              "file_path",
+              "summary",
+              "tags",
+              "layer",
+              "score"
+            ],
+            "upstream[]": [
+              "node",
+              "depth",
+              "path_ids"
+            ],
+            "upstream[].node": [
+              "id",
+              "type",
+              "name",
+              "file_path",
+              "summary",
+              "tags",
+              "layer",
+              "score"
+            ],
+            "downstream[]": [
+              "node",
+              "depth",
+              "path_ids"
+            ],
+            "tests[]": [
+              "id",
+              "type",
+              "name",
+              "file_path",
+              "summary",
+              "tags",
+              "layer",
+              "score"
+            ],
+            "docs[]": [
+              "id",
+              "type",
+              "name",
+              "file_path",
+              "summary",
+              "tags",
+              "layer",
+              "score"
+            ]
+          }
+        }
+      },
+      "trace_call_chain": {
+        "stability": "stable",
+        "kind": "read",
+        "params": {
+          "from_id": {
+            "type": "string",
+            "required": true,
+            "default": null
+          },
+          "to_id": {
+            "type": "string",
+            "required": true,
+            "default": null
+          },
+          "max_depth": {
+            "type": "integer",
+            "required": false,
+            "default": 6
+          }
+        },
+        "result": {
+          "model": null,
+          "nullable": true,
+          "fields": [
+            "chain",
+            "depth"
+          ],
+          "nested": {
+            "chain[]": [
+              "id",
+              "name",
+              "type"
+            ]
+          }
+        }
+      },
+      "find_tests_for": {
+        "stability": "stable",
+        "kind": "read",
+        "params": {
+          "id": {
+            "type": "string",
+            "required": true,
+            "default": null
+          },
+          "min_weight": {
+            "type": "number",
+            "required": false,
+            "default": 0.5
+          }
+        },
+        "result": {
+          "model": "FoundNode",
+          "list": true,
+          "fields": [
+            "id",
+            "type",
+            "name",
+            "file_path",
+            "summary",
+            "tags",
+            "layer",
+            "score"
+          ]
+        }
+      },
+      "find_docs_for": {
+        "stability": "stable",
+        "kind": "read",
+        "params": {
+          "id": {
+            "type": "string",
+            "required": true,
+            "default": null
+          },
+          "min_weight": {
+            "type": "number",
+            "required": false,
+            "default": 0.0
+          }
+        },
+        "result": {
+          "model": "FoundNode",
+          "list": true,
+          "fields": [
+            "id",
+            "type",
+            "name",
+            "file_path",
+            "summary",
+            "tags",
+            "layer",
+            "score"
+          ]
+        }
+      },
+      "find_code_for": {
+        "stability": "stable",
+        "kind": "read",
+        "params": {
+          "id": {
+            "type": "string",
+            "required": true,
+            "default": null
+          },
+          "min_weight": {
+            "type": "number",
+            "required": false,
+            "default": 0.0
+          }
+        },
+        "result": {
+          "model": "FoundNode",
+          "list": true,
+          "fields": [
+            "id",
+            "type",
+            "name",
+            "file_path",
+            "summary",
+            "tags",
+            "layer",
+            "score"
+          ]
+        }
+      },
+      "semantic_search": {
+        "stability": "internal",
+        "kind": "read",
+        "params": {
+          "query": {
+            "type": "string",
+            "required": true,
+            "default": null
+          },
+          "scope": {
+            "type": "string",
+            "required": false,
+            "default": "all"
+          },
+          "top_k": {
+            "type": "integer",
+            "required": false,
+            "default": 10
+          },
+          "repos": {
+            "type": "array<string>",
+            "required": false,
+            "default": null
+          }
+        },
+        "result": {
+          "model": "FoundNode",
+          "list": true,
+          "fields": [
+            "id",
+            "type",
+            "name",
+            "file_path",
+            "summary",
+            "tags",
+            "layer",
+            "score"
+          ]
+        }
+      },
+      "list_layers": {
+        "stability": "stable",
+        "kind": "read",
+        "params": {
+          "repo": {
+            "type": "string",
+            "required": true,
+            "default": null
+          },
+          "include_member_count": {
+            "type": "boolean",
+            "required": false,
+            "default": true
+          }
+        },
+        "result": {
+          "model": null,
+          "list": true,
+          "fields": [
+            "name",
+            "id",
+            "member_count"
+          ]
+        }
+      },
+      "get_diff": {
+        "stability": "internal",
+        "kind": "read",
+        "params": {
+          "repo": {
+            "type": "string",
+            "required": true,
+            "default": null
+          },
+          "base_commit": {
+            "type": "string",
+            "required": true,
+            "default": null
+          },
+          "head_commit": {
+            "type": "string",
+            "required": true,
+            "default": null
+          }
+        },
+        "result": {
+          "model": null,
+          "fields": null
+        }
+      },
+      "list_projects": {
+        "stability": "stable",
+        "kind": "read",
+        "params": {},
+        "result": {
+          "model": "ListProjectsOutput",
+          "fields": [
+            "projects",
+            "total"
+          ],
+          "nested": {
+            "projects[]": [
+              "slug",
+              "last_commit_sha",
+              "last_ingest_at",
+              "node_count",
+              "edge_count"
+            ]
+          }
+        }
+      },
+      "get_architecture": {
+        "stability": "stable",
+        "kind": "read",
+        "params": {
+          "repo": {
+            "type": "string",
+            "required": true,
+            "default": null
+          }
+        },
+        "result": {
+          "model": "ArchitectureOutput",
+          "fields": [
+            "repo",
+            "layers",
+            "entry_points",
+            "hotspots",
+            "layer_flows"
+          ],
+          "nested": {
+            "hotspots[]": [
+              "id",
+              "name",
+              "type",
+              "file_path",
+              "in_degree",
+              "out_degree",
+              "total_degree"
+            ]
+          }
+        }
+      },
+      "find_dead_code": {
+        "stability": "internal",
+        "kind": "read",
+        "params": {
+          "repo": {
+            "type": "string",
+            "required": true,
+            "default": null
+          },
+          "entry_layer": {
+            "type": "string",
+            "required": false,
+            "default": "controller"
+          },
+          "limit": {
+            "type": "integer",
+            "required": false,
+            "default": 50
+          }
+        },
+        "result": {
+          "model": "DeadCodeOutput",
+          "fields": [
+            "repo",
+            "entry_points_analyzed",
+            "total_functions",
+            "reachable_count",
+            "unreachable_count",
+            "unreachable_nodes"
+          ]
+        }
+      },
+      "ingest_repo": {
+        "stability": "internal",
+        "kind": "write",
+        "params": {
+          "repo_url": {
+            "type": "string",
+            "required": true,
+            "default": null
+          },
+          "repo_slug": {
+            "type": "string",
+            "required": true,
+            "default": null
+          },
+          "commit_sha": {
+            "type": "string",
+            "required": true,
+            "default": null
+          },
+          "base_commit_sha": {
+            "type": "string",
+            "required": false,
+            "default": null
+          },
+          "branch": {
+            "type": "string",
+            "required": false,
+            "default": "main"
+          },
+          "force_full": {
+            "type": "boolean",
+            "required": false,
+            "default": false
+          },
+          "patterns": {
+            "type": "array<string>",
+            "required": false,
+            "default": null
+          }
+        },
+        "result": {
+          "model": "IngestRepoOutput",
+          "fields": [
+            "job_id",
+            "status",
+            "nodes_added",
+            "nodes_modified",
+            "nodes_removed",
+            "edges_added",
+            "edges_removed",
+            "duration_seconds",
+            "errors"
+          ]
+        }
+      },
+      "reindex_file": {
+        "stability": "internal",
+        "kind": "write",
+        "params": {
+          "repo": {
+            "type": "string",
+            "required": true,
+            "default": null
+          },
+          "file_path": {
+            "type": "string",
+            "required": true,
+            "default": null
+          },
+          "commit_sha": {
+            "type": "string",
+            "required": false,
+            "default": null
+          }
+        },
+        "result": {
+          "model": null,
+          "fields": null
+        }
+      },
+      "refresh_summaries": {
+        "stability": "internal",
+        "kind": "write",
+        "params": {
+          "repo": {
+            "type": "string",
+            "required": false,
+            "default": null
+          },
+          "node_ids": {
+            "type": "array<string>",
+            "required": false,
+            "default": null
+          },
+          "only_if_missing": {
+            "type": "boolean",
+            "required": false,
+            "default": true
+          },
+          "limit": {
+            "type": "integer",
+            "required": false,
+            "default": 500
+          }
+        },
+        "result": {
+          "model": null,
+          "fields": null
+        }
+      },
+      "delete_repo": {
+        "stability": "internal",
+        "kind": "write",
+        "params": {
+          "repo_slug": {
+            "type": "string",
+            "required": true,
+            "default": null
+          },
+          "confirm": {
+            "type": "boolean",
+            "required": false,
+            "default": false
+          }
+        },
+        "result": {
+          "model": null,
+          "fields": null
+        }
+      },
+      "run_test_map": {
+        "stability": "internal",
+        "kind": "write",
+        "params": {
+          "repo": {
+            "type": "string",
+            "required": true,
+            "default": null
+          },
+          "min_weight": {
+            "type": "number",
+            "required": false,
+            "default": 0.5
+          }
+        },
+        "result": {
+          "model": null,
+          "fields": null
+        }
+      },
+      "refresh_doc_links": {
+        "stability": "internal",
+        "kind": "write",
+        "params": {
+          "repo": {
+            "type": "string",
+            "required": true,
+            "default": null
+          },
+          "use_embeddings": {
+            "type": "boolean",
+            "required": false,
+            "default": true
+          },
+          "batch_size": {
+            "type": "integer",
+            "required": false,
+            "default": 20
+          },
+          "min_confidence": {
+            "type": "number",
+            "required": false,
+            "default": 0.3
+          }
+        },
+        "result": {
+          "model": null,
+          "fields": null
+        }
+      }
+    }
+  },
+  "known_ambiguities": [
+    "PROPERTY CASE: graph properties are camelCase (filePath, lineRange, signatureHash, fileHash, nameTokens) except snake_case ones (created_at, updated_at, last_seen_commit, deleted_at, summary_embedding, last_commit_sha). The property is 'filePath', NOT 'file_path'. MCP tool results, however, use snake_case 'file_path' / 'line_range'. A consumer writing raw Cypher must use filePath; a consumer using MCP must use file_path.",
+    "Repo node carries 'name' (not 'slug'); other nodes carry 'repo'. The Repo node has no 'repo' property.",
+    "Function vs Method: class methods are emitted as Function nodes with 'function:' ids; Method/make_method_id exist but are unused. Two same-named, same-signature methods in different classes of one file would collide on id.",
+    "Enum nodes: normalisation maps 'enum' to the 'class:' id prefix while the label is Enum; no source emits enums today, and no Enum uniqueness constraint exists.",
+    "Section ids share the 'doc:' prefix with Document ids; extract_id_parts() only partially parses function/method ids.",
+    "Layer id is built with the raw layer name (not slugified via make_layer_id).",
+    "MENTIONS is declared and produced by the markdown source but deferred ('<symbol>:' targets) and never persisted; consumers mapping MENTIONS will see none. DOCUMENTS only exists after 'link-docs'; TESTS only after 'test-map'.",
+    "INSTANTIATES/CONTAINS/DEFINES/EXTENDS/REFERENCES/EXPOSES_ENDPOINT/CALLS_HTTP are declared in domain/schema.py but never written.",
+    "RENAMED_FROM is written old-file -> new-file, which reads backwards from its name.",
+    "'repo' is the user-supplied slug verbatim (case preserved). CLI 'ingest' defaults it to the directory name (or parent name for generic dirs src/lib/app/source/main/code); the MCP ingest_repo uses 'repo_slug' as given (may be 'owner/name' or a bare name). The CLI resolves case-insensitively against existing Repo nodes, but the MCP/pipeline path does not, so 'DevOnHire' and 'devonhire' can coexist as distinct repos. Consumers MUST normalise (last path segment, lower-case, strip .git) before comparing.",
+    "Default string properties are written as '' (not null) for language/signature/signatureHash/fileHash/filePath; 'layer' is null (property absent) when undetected.",
+    "Embedding dimension: vector indexes are created with EMBEDDING model dimensions (default 384, bge-small); unknown model names silently fall back to 384, and an existing index with another dimension is not recreated (IF NOT EXISTS).",
+    "list_projects previously matched on Repo.slug (nonexistent) -> fixed in this branch to Repo.name; a Repo node count of 0 for older CodeKG builds is a symptom.",
+    "get_node/impact queries match '(n {id: $id})' without a label; ids are only guaranteed unique per label-constraint, not globally, and an unlabelled id lookup is a full scan.",
+    "Node 'type' in MCP results is the first label that is not CodeNode/DocNode (e.g. 'Function'), but trace_call_chain's chain[].type is labels(n)[0] (label order is not guaranteed)."
+  ]
+}
