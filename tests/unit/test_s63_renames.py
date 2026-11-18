@@ -2,15 +2,12 @@
 
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
-from code_kg.domain.models import RawEdge, NormalizedNode
-from code_kg.ingestion.upsert import (
+from strata.domain.models import NormalizedNode, RawEdge
+from strata.ingestion.upsert import (
     resolve_calls_edges_for_files,
     soft_delete_file_nodes,
     upsert_renamed_from_edge,
 )
-
 
 # ── soft_delete_file_nodes ────────────────────────────────────────────────────
 

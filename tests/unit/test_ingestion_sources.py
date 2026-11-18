@@ -2,9 +2,9 @@
 
 import pytest
 
-from code_kg.domain.models import RawEdge, RawNode
-from code_kg.ingestion.sources.code_csharp import CSharpSource
-from code_kg.ingestion.sources.code_typescript import TypeScriptSource
+from strata.domain.models import RawEdge, RawNode
+from strata.ingestion.sources.code_csharp import CSharpSource
+from strata.ingestion.sources.code_typescript import TypeScriptSource
 
 
 @pytest.mark.asyncio

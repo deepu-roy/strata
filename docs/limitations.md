@@ -1,6 +1,6 @@
 # Known Limitations
 
-Understanding what CodeKG does not do helps you plan where to complement it with
+Understanding what Strata does not do helps you plan where to complement it with
 other tools or manual effort.
 
 ---
@@ -24,7 +24,7 @@ executable-code nodes.
 
 ### Cross-file calls are marked `unresolved`
 
-CodeKG resolves same-file calls precisely. For cross-file calls, it matches by
+Strata resolves same-file calls precisely. For cross-file calls, it matches by
 symbol name. When two functions share the same name in different files, the edge
 is emitted as `unresolved=true` and the resolution may be ambiguous.
 
@@ -35,7 +35,7 @@ across namespaces may be attributed to the wrong target.
 
 Interface method calls, virtual dispatch, dependency injection, and event-based
 coupling are **not tracked**. If `IClientService.GetClient()` is called via a
-DI container, CodeKG records only the interface call — not which concrete
+DI container, Strata records only the interface call — not which concrete
 implementation is invoked at runtime.
 
 ### No reflection or metaprogramming
@@ -125,7 +125,7 @@ configured embedding model. Changing the model (e.g. from 384-dim `bge-small`
 to 1536-dim `text-embedding-3-small`) requires:
 
 1. Dropping and recreating the Neo4j vector index
-2. Re-running `code-kg enrich` for all repos to regenerate vectors
+2. Re-running `strata enrich` for all repos to regenerate vectors
 
 There is no automated migration path for this today.
 

@@ -1,6 +1,6 @@
 # MCP Tools Reference
 
-CodeKG exposes 16 MCP tools plus one REST endpoint. All tools are available over
+Strata exposes 16 MCP tools plus one REST endpoint. All tools are available over
 both the **stdio** and **HTTP (streamable-http)** transports.
 
 See [MCP Setup Guide](mcp-setup.md) for how to connect your AI assistant or agent.
@@ -149,7 +149,7 @@ min_weight  float   — minimum edge confidence (default 0.5)
 
 **Returns** `FoundNode[]`
 
-> Requires `code-kg test-map` or the `run_test_map` write tool to have been run first.
+> Requires `strata test-map` or the `run_test_map` write tool to have been run first.
 
 ---
 
@@ -192,7 +192,7 @@ repos   string[]  — optional repo filter
 
 **Returns** `FoundNode[]`
 
-> Requires enrichment (`code-kg enrich`) to populate embedding vectors.
+> Requires enrichment (`strata enrich`) to populate embedding vectors.
 
 ---
 

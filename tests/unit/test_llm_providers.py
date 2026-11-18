@@ -5,9 +5,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from code_kg.config import SummarySettings
-from code_kg.domain.models import SummaryRequest
-from code_kg.providers.llm.adapters import (
+from strata.config import SummarySettings
+from strata.domain.models import SummaryRequest
+from strata.providers.llm.adapters import (
     _REGISTRY,
     OllamaAdapter,
     OpenAIAdapter,
@@ -16,9 +16,9 @@ from code_kg.providers.llm.adapters import (
     register_adapter,
     resolve_adapter,
 )
-from code_kg.providers.llm.gateway import LLMError, LLMGateway
-from code_kg.providers.summary.base import build_summary_provider
-from code_kg.providers.summary.llm import LLMSummaryProvider
+from strata.providers.llm.gateway import LLMError, LLMGateway
+from strata.providers.summary.base import build_summary_provider
+from strata.providers.summary.llm import LLMSummaryProvider
 
 
 def _reply(text: str) -> SimpleNamespace:
@@ -252,7 +252,7 @@ def test_model_version_is_unchanged_for_existing_ollama_and_openai_setups() -> N
         LLMSummaryProvider(SummarySettings(provider="openai", model="gpt-4o-mini")).model_version
         == "gpt-4o-mini"
     )
-    # providers new to CodeKG keep the full string
+    # providers new to Strata keep the full string
     assert (
         LLMSummaryProvider(SummarySettings(model="anthropic/claude-haiku-5-5")).model_version
         == "anthropic/claude-haiku-5-5"

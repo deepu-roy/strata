@@ -1,6 +1,6 @@
 # Use Cases
 
-CodeKG is a structural knowledge graph, not a keyword search engine. It shines
+Strata is a structural knowledge graph, not a keyword search engine. It shines
 when questions require understanding *relationships* — who calls what, what tests
 cover a function, how deep a dependency chain is, which layer a class belongs to.
 
@@ -13,7 +13,7 @@ cover a function, how deep a dependency chain is, which layer a class belongs to
 `ClientService.GetClient` which calls `BaseRepository.GetById`, nor that the only
 test for this path is `Get_Client_By_Id_Success`.
 
-**How CodeKG helps:**
+**How Strata helps:**
 After vector search finds the entry point (`ClientService.GetClient`), pass its
 ID to `impact_analysis` or `trace_call_chain` to retrieve the full execution
 context — callers, callees, tests, and related docs — in a single graph traversal.
@@ -34,7 +34,7 @@ vector search → candidate node IDs → impact_analysis / trace_call_chain → 
 `EmailService` is already injected as a singleton, or that there's an `IEmailService`
 interface that new implementations must satisfy.
 
-**How CodeKG helps:**
+**How Strata helps:**
 With the MCP server connected, the assistant can:
 - `find_nodes(query="email service")` → discover existing services
 - `get_node(id=...)` → read the full interface contract and existing implementation
@@ -52,7 +52,7 @@ that conflicts with existing patterns.
 existing services are composed, which interfaces exist, and how the current
 layer boundaries are drawn.
 
-**How CodeKG helps:**
+**How Strata helps:**
 An agent building an SDD can:
 
 1. `list_layers(repo=...)` — understand the current architectural tiers
@@ -72,7 +72,7 @@ relying on potentially stale human-written docs.
 (a widely-called utility, a security guard, a base repository method) but this
 judgement is manual and easy to miss.
 
-**How CodeKG helps:**
+**How Strata helps:**
 A review agent can:
 
 1. `get_diff(repo, base_commit, head_commit)` — see what changed in the graph
@@ -89,13 +89,13 @@ seconds — the kind of insight that takes a human reviewer much longer to disco
 **The problem:** A developer joining a large codebase spends days tracing "how
 does a request get from the HTTP handler to the database?" manually.
 
-**How CodeKG helps:**
+**How Strata helps:**
 - `trace_call_chain(from_id=<controller_action>, to_id=<repository_method>)` — show the exact call path
 - `find_nodes(query="candidate", layers=["service"])` — find all candidate-related service classes
 - `get_node(id=<class_id>)` — read the LLM-generated summary and the class signature without opening files
 - `list_layers(repo=...)` — understand the architecture in one call
 
-A CodeKG-aware assistant can answer "explain how the candidate pipeline works"
+A Strata-aware assistant can answer "explain how the candidate pipeline works"
 with structural accuracy, not just pattern-matched answers from README text.
 
 ---
@@ -105,7 +105,7 @@ with structural accuracy, not just pattern-matched answers from README text.
 **The problem:** Layer violations (a model class calling a controller, a repository
 importing a service) accumulate silently over time.
 
-**How CodeKG helps:**
+**How Strata helps:**
 Query for layer violations directly in Cypher:
 
 ```cypher
@@ -125,7 +125,7 @@ fail the build if violations are found.
 **The problem:** Before renaming `IRepository.GetById` to `IRepository.FindById`,
 you need to know every call site across 50 services.
 
-**How CodeKG helps:**
+**How Strata helps:**
 `impact_analysis(id=<GetById_node_id>, max_depth=5)` returns every upstream caller
 with depth and layer information. The result includes how many controller, service,
 and test nodes would be affected — giving a risk estimate before a single line of
@@ -138,8 +138,8 @@ code is changed.
 **The problem:** You want to know which functions have zero test coverage in the
 graph — no `TESTS` edges pointing at them.
 
-**How CodeKG helps:**
-After running `code-kg test-map`, query directly:
+**How Strata helps:**
+After running `strata test-map`, query directly:
 
 ```cypher
 -- Functions with no TESTS edges
@@ -160,8 +160,8 @@ line-level coverage — it complements, not replaces, a coverage tool.
 **The problem:** It's hard to know which service classes or public APIs have no
 corresponding documentation.
 
-**How CodeKG helps:**
-After running `code-kg link-docs`, query for nodes with no `MENTIONS` or
+**How Strata helps:**
+After running `strata link-docs`, query for nodes with no `MENTIONS` or
 `DOCUMENTS` edges:
 
 ```cypher
@@ -182,7 +182,7 @@ Feed the results to a doc-generation agent to bootstrap missing documentation.
 services. When a breaking change is made to a shared function, the blast radius
 is unknown.
 
-**How CodeKG helps:**
+**How Strata helps:**
 Ingest all services and the shared library into the same Neo4j instance (each
 with a different `repo` slug). Then:
 
@@ -199,7 +199,7 @@ function, not just how many files in a single repo.
 
 ---
 
-## When CodeKG is _not_ the right tool
+## When Strata is _not_ the right tool
 
 | Scenario | Better tool |
 |----------|-------------|
@@ -210,4 +210,4 @@ function, not just how many files in a single repo.
 | SAST / security scanning | Semgrep, Snyk, Checkmarx |
 | PR diff review comments | GitHub code review, Review Board |
 
-CodeKG is most valuable when combined with these tools, not instead of them.
+Strata is most valuable when combined with these tools, not instead of them.

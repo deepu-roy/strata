@@ -1,6 +1,6 @@
-# CodeKG — Code Knowledge Graph
+# Strata — Code Knowledge Graph
 
-Turn any codebase into a queryable knowledge graph. CodeKG uses
+Turn any codebase into a queryable knowledge graph. Strata uses
 [tree-sitter](https://tree-sitter.github.io/tree-sitter/) to parse TypeScript,
 JavaScript, C#, and Java into a [Neo4j](https://neo4j.com/) graph, enriches every
 node with LLM-generated summaries and semantic embeddings, then exposes the graph
@@ -30,7 +30,7 @@ TypeScript / C# / Java / JS
 | Guide | What it covers |
 |-------|---------------|
 | [Quick Start](docs/quickstart.md) | Docker or local Python setup, first ingest, first query |
-| [Features](docs/features.md) | Full catalogue of what CodeKG extracts and how it works |
+| [Features](docs/features.md) | Full catalogue of what Strata extracts and how it works |
 | [MCP Setup Guide](docs/mcp-setup.md) | Connect Claude Code, Copilot, or a custom agent to the MCP server |
 | [MCP Tools Reference](docs/mcp-tools.md) | All 16 tools with parameters, response shapes, and examples |
 | [Configuration Reference](docs/configuration.md) | Every environment variable — Neo4j, embedding models, LLMs, MCP |
@@ -42,13 +42,13 @@ TypeScript / C# / Java / JS
 ## 30-second start
 
 ```bash
-git clone https://github.com/your-org/code-kg.git && cd code-kg
+git clone https://github.com/your-org/strata.git && cd strata
 cp .env.example .env
 # Edit .env: set SUMMARY__MODEL and add a volume mount for your repo
 docker compose up -d          # ollama-init pulls the model automatically
-docker compose exec code-kg-mcp code-kg bootstrap
-docker compose exec code-kg-mcp code-kg ingest /mnt/your-repo --repo your-repo
-docker compose exec code-kg-mcp code-kg enrich --repo your-repo
+docker compose exec strata-mcp strata bootstrap
+docker compose exec strata-mcp strata ingest /mnt/your-repo --repo your-repo
+docker compose exec strata-mcp strata enrich --repo your-repo
 ```
 
 → Open **http://localhost:7474** and query your graph. Full guide: [Quick Start](docs/quickstart.md).
@@ -71,8 +71,8 @@ docker compose exec code-kg-mcp code-kg enrich --repo your-repo
 ### Docker (recommended)
 
 ```bash
-git clone https://github.com/your-org/code-kg.git
-cd code-kg
+git clone https://github.com/your-org/strata.git
+cd strata
 cp .env.example .env          # set SUMMARY__MODEL and add volume mounts for your repos
 docker compose up -d          # ollama-init pulls the configured model automatically
 ```
@@ -93,22 +93,22 @@ pip install -e .
 
 ```bash
 # One-time schema setup
-code-kg bootstrap
+strata bootstrap
 
 # Ingest a repository
-code-kg ingest /path/to/repo --pattern "**/*.ts,**/*.cs" --repo my-service
+strata ingest /path/to/repo --pattern "**/*.ts,**/*.cs" --repo my-service
 
 # Infer test links
-code-kg test-map /path/to/repo --repo my-service
+strata test-map /path/to/repo --repo my-service
 
 # Enrich with summaries and embeddings
-code-kg enrich --repo my-service --limit 500
+strata enrich --repo my-service --limit 500
 
 # Start the MCP server (HTTP, for Copilot / custom agents)
-code-kg mcp http
+strata mcp http
 
 # Or stdio (for Claude Code)
-code-kg mcp stdio
+strata mcp stdio
 ```
 
 ---
@@ -128,7 +128,7 @@ code-kg mcp stdio
 ## Architecture overview
 
 ```
-src/code_kg/
+src/strata/
 ├── cli.py                        # bootstrap / ingest / enrich / eval commands
 ├── config.py                     # Pydantic settings (env-driven, nested __)
 ├── domain/
@@ -155,7 +155,7 @@ src/code_kg/
 │   ├── embedding/                # sentence-transformers + OpenAI providers
 │   └── summary/                  # Ollama + OpenAI LLM providers
 └── eval/
-    └── runner.py                 # evaluation harness (code-kg eval run)
+    └── runner.py                 # evaluation harness (strata eval run)
 ```
 
 ---
@@ -199,7 +199,7 @@ ruff check src/ tests/
 mypy src/
 
 # Run the eval suite against a live server
-code-kg eval run --server http://localhost:8765
+strata eval run --server http://localhost:8765
 ```
 
 ### Adding a new language
@@ -207,7 +207,7 @@ code-kg eval run --server http://localhost:8765
 1. `pip install tree-sitter-<lang>`
 2. Register the grammar in `tree_sitter_runtime.py`
 3. Implement `_extract_<lang>()` traversal
-4. Add `src/code_kg/ingestion/sources/code_<lang>.py`
+4. Add `src/strata/ingestion/sources/code_<lang>.py`
 5. Wire into `cli.py` and add glob patterns to the default `--pattern`
 6. Add fixtures under `tests/fixtures/<lang>/` and write unit tests
 

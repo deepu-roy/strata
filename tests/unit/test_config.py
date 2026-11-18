@@ -4,10 +4,7 @@ import os
 import tempfile
 from pathlib import Path
 
-import pytest
-from pydantic import ValidationError
-
-from code_kg.config import EmbeddingSettings, Neo4jSettings, Settings, SummarySettings
+from strata.config import EmbeddingSettings, Neo4jSettings, Settings, SummarySettings
 
 
 def test_neo4j_settings_with_custom_database():

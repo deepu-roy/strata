@@ -9,19 +9,19 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from code_kg.domain.models import (
+from strata.domain.models import (
     CheckRepoChangesInput,
     IngestRepoInput,
     IngestRepoOutput,
 )
-from code_kg.ingestion import git as gitmod
-from code_kg.ingestion.git import GitError, clone_dir_name, redact, sync_repo
-from code_kg.ingestion.jobs import REGISTRY, IngestProgress, JobRegistry
-from code_kg.ingestion.pipeline import run_pipeline
-from code_kg.mcp.tools import changes as changes_mod
-from code_kg.mcp.tools import write as write_mod
-from code_kg.mcp.tools.changes import check_repo_changes
-from code_kg.mcp.tools.write import get_ingest_job, ingest_repo, start_ingest_repo
+from strata.ingestion import git as gitmod
+from strata.ingestion.git import GitError, clone_dir_name, redact, sync_repo
+from strata.ingestion.jobs import REGISTRY, IngestProgress, JobRegistry
+from strata.ingestion.pipeline import run_pipeline
+from strata.mcp.tools import changes as changes_mod
+from strata.mcp.tools import write as write_mod
+from strata.mcp.tools.changes import check_repo_changes
+from strata.mcp.tools.write import get_ingest_job, ingest_repo, start_ingest_repo
 
 _ENV = {
     **os.environ,
@@ -101,9 +101,9 @@ def pipeline_mocks():
     async def fake_meta(client, slug, commit_sha=None, **kw):
         rec["meta"].append(commit_sha)
 
-    with patch("code_kg.ingestion.pipeline.normalize_and_upsert", new=fake_upsert), \
-         patch("code_kg.ingestion.pipeline.update_repo_meta", new=fake_meta), \
-         patch("code_kg.ingestion.pipeline.soft_delete_orphans", new=AsyncMock(return_value=0)), \
+    with patch("strata.ingestion.pipeline.normalize_and_upsert", new=fake_upsert), \
+         patch("strata.ingestion.pipeline.update_repo_meta", new=fake_meta), \
+         patch("strata.ingestion.pipeline.soft_delete_orphans", new=AsyncMock(return_value=0)), \
          patch.object(write_mod, "soft_delete_file_nodes", new=AsyncMock()), \
          patch.object(write_mod, "upsert_renamed_from_edge", new=AsyncMock(return_value=True)):
         yield rec
@@ -216,7 +216,7 @@ class TestSyncRepo:
 
 class TestAuth:
     def test_token_goes_to_env_header_only(self, monkeypatch):
-        monkeypatch.delenv("CODEKG_GIT_USER", raising=False)
+        monkeypatch.delenv("STRATA_GIT_USER", raising=False)
         env, secrets = gitmod._auth_env("https://github.com/x/y", "tok-123")
         assert env["GIT_CONFIG_KEY_0"] == "http.extraheader"
         import base64
@@ -225,8 +225,8 @@ class TestAuth:
         assert "tok-123" in secrets
 
     def test_env_vars_and_non_http(self, monkeypatch):
-        monkeypatch.setenv("CODEKG_GIT_TOKEN", "envtok")
-        monkeypatch.setenv("CODEKG_GIT_USER", "bob")
+        monkeypatch.setenv("STRATA_GIT_TOKEN", "envtok")
+        monkeypatch.setenv("STRATA_GIT_USER", "bob")
         env, _ = gitmod._auth_env("https://h/x", None)
         import base64
         assert base64.b64encode(b"bob:envtok").decode() in env["GIT_CONFIG_VALUE_0"]

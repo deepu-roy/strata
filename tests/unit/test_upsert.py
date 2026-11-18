@@ -1,9 +1,8 @@
 """Tests for upsert pipeline."""
 
-import pytest
 
-from code_kg.domain.models import RawNode, NormalizedNode
-from code_kg.ingestion.upsert import normalize_node
+from strata.domain.models import RawNode
+from strata.ingestion.upsert import normalize_node
 
 
 class TestNormalizeNode:

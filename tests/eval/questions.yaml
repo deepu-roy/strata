@@ -1,6 +1,6 @@
-# Code-KG Evaluation Questions
+# Strata Evaluation Questions
 # Target repo: DevOnHire (C# .NET + Angular/TypeScript)
-# Run: code-kg eval run --server http://localhost:8765
+# Run: strata eval run --server http://localhost:8765
 #
 # Each question covers one key capability of the MCP server.
 # Pass criteria are checked programmatically by the eval runner.

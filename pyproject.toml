@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "code-kg"
+name = "strata"
 version = "0.1.0"
 description = "Code knowledge graph via tree-sitter + Neo4j + MCP"
 authors = [{name = "Deepu Roy", email = "deepuroy@gmail.com"}]
@@ -42,7 +42,7 @@ dev = [
 ]
 
 [project.scripts]
-code-kg = "code_kg.cli:app"
+strata = "strata.cli:app"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

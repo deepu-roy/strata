@@ -2,7 +2,7 @@
 
 import re
 
-from code_kg.graph import queries as Q
+from strata.graph import queries as Q
 
 
 def _all_queries() -> dict[str, str]:

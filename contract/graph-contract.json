@@ -1,8 +1,8 @@
 {
-  "contract_name": "codekg-graph-contract",
+  "contract_name": "strata-graph-contract",
   "contract_version": "1.2.0",
   "versioning": "semver. MAJOR: removing/renaming a label, edge type, required property, id format or MCP tool/param/result field. MINOR: additive (new label/edge/optional prop/tool/field). PATCH: docs/ambiguity clarifications.",
-  "producer": "code-kg",
+  "producer": "strata",
   "neo4j": {
     "min_version": "5.11",
     "tested_with": "5.15",
@@ -1566,7 +1566,7 @@
     "'repo' is the user-supplied slug verbatim (case preserved). CLI 'ingest' defaults it to the directory name (or parent name for generic dirs src/lib/app/source/main/code); the MCP ingest_repo uses 'repo_slug' as given (may be 'owner/name' or a bare name). The CLI resolves case-insensitively against existing Repo nodes, but the MCP/pipeline path does not, so 'DevOnHire' and 'devonhire' can coexist as distinct repos. Consumers MUST normalise (last path segment, lower-case, strip .git) before comparing.",
     "Default string properties are written as '' (not null) for language/signature/signatureHash/fileHash/filePath; 'layer' is null (property absent) when undetected.",
     "Embedding dimension: vector indexes are created with EMBEDDING model dimensions (default 384, bge-small); unknown model names silently fall back to 384, and an existing index with another dimension is not recreated (IF NOT EXISTS).",
-    "list_projects previously matched on Repo.slug (nonexistent) -> fixed in this branch to Repo.name; a Repo node count of 0 for older CodeKG builds is a symptom.",
+    "list_projects previously matched on Repo.slug (nonexistent) -> fixed in this branch to Repo.name; a Repo node count of 0 for older Strata builds is a symptom.",
     "get_node/impact queries match '(n {id: $id})' without a label; ids are only guaranteed unique per label-constraint, not globally, and an unlabelled id lookup is a full scan.",
     "Node 'type' in MCP results is the first label that is not CodeNode/DocNode (e.g. 'Function'), but trace_call_chain's chain[].type is labels(n)[0] (label order is not guaranteed)."
   ]

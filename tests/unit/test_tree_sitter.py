@@ -1,6 +1,6 @@
 """Tests for code parsing runtime."""
 
-from code_kg.ingestion.tree_sitter_runtime import detect_language, run_query
+from strata.ingestion.tree_sitter_runtime import detect_language, run_query
 
 
 def test_detect_language():

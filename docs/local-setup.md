@@ -16,7 +16,7 @@ Reference for running the full stack locally, running tests, and troubleshooting
 
 ```bash
 # 1. Clone and configure
-git clone https://github.com/your-org/code-kg.git && cd code-kg
+git clone https://github.com/your-org/strata.git && cd strata
 cp .env.example .env
 # Edit .env — at minimum set NEO4J__PASSWORD and SUMMARY__MODEL
 
@@ -32,9 +32,9 @@ Services started:
 | Service | URL | Notes |
 |---------|-----|-------|
 | Neo4j Browser | http://localhost:7474 | user: `neo4j`, password from `.env` |
-| Neo4j Bolt | bolt://localhost:7687 | used by code-kg |
+| Neo4j Bolt | bolt://localhost:7687 | used by strata |
 | Ollama API | http://localhost:11434 | |
-| code-kg MCP | http://localhost:8765 | MCP server (HTTP transport) |
+| strata MCP | http://localhost:8765 | MCP server (HTTP transport) |
 
 ---
 
@@ -57,11 +57,11 @@ To switch:
 ## Volume mounts for ingest
 
 The container can only ingest paths that are volume-mounted. Add mounts in
-`docker-compose.yml` under `code-kg-mcp.volumes`:
+`docker-compose.yml` under `strata-mcp.volumes`:
 
 ```yaml
 services:
-  code-kg-mcp:
+  strata-mcp:
     volumes:
       - ./workdir:/app/workdir
       - /absolute/host/path/to/your-repo:/mnt/your-repo   # ← add this
@@ -70,32 +70,32 @@ services:
 Then ingest using the in-container path:
 
 ```bash
-docker compose exec code-kg-mcp \
-  code-kg ingest /mnt/your-repo --pattern "**/*.ts,**/*.cs" --repo your-repo
+docker compose exec strata-mcp \
+  strata ingest /mnt/your-repo --pattern "**/*.ts,**/*.cs" --repo your-repo
 ```
 
 ---
 
 ## Running commands inside the container
 
-All `code-kg` CLI commands work via `docker compose exec code-kg-mcp`:
+All `strata` CLI commands work via `docker compose exec strata-mcp`:
 
 ```bash
 # Bootstrap schema (run once after first start)
-docker compose exec code-kg-mcp code-kg bootstrap
+docker compose exec strata-mcp strata bootstrap
 
 # Ingest a repo
-docker compose exec code-kg-mcp \
-  code-kg ingest /mnt/your-repo --pattern "**/*.ts,**/*.cs" --repo your-repo
+docker compose exec strata-mcp \
+  strata ingest /mnt/your-repo --pattern "**/*.ts,**/*.cs" --repo your-repo
 
 # Enrich (--repo is case-insensitive)
-docker compose exec code-kg-mcp code-kg enrich --repo your-repo --limit 200
+docker compose exec strata-mcp strata enrich --repo your-repo --limit 200
 
 # Map tests
-docker compose exec code-kg-mcp code-kg test-map /mnt/your-repo --repo your-repo
+docker compose exec strata-mcp strata test-map /mnt/your-repo --repo your-repo
 
 # Link docs
-docker compose exec code-kg-mcp code-kg link-docs /mnt/your-repo --repo your-repo
+docker compose exec strata-mcp strata link-docs /mnt/your-repo --repo your-repo
 ```
 
 ---
@@ -117,7 +117,7 @@ cp .env.example .env.local
 #   SUMMARY__BASE_URL=http://localhost:11434
 
 # Bootstrap
-code-kg bootstrap
+strata bootstrap
 ```
 
 When running locally, Ollama must be running on the host (`ollama serve`) and
@@ -139,7 +139,7 @@ pytest tests/unit/ -v
 pytest tests/integration/ -v
 
 # Eval suite — requires running MCP server on :8765
-code-kg eval run --server http://localhost:8765
+strata eval run --server http://localhost:8765
 ```
 
 ---
@@ -154,10 +154,10 @@ docker compose down
 docker compose down -v
 
 # Rebuild just the MCP server (after code changes)
-docker compose up -d --build code-kg-mcp
+docker compose up -d --build strata-mcp
 
 # Tail logs
-docker compose logs -f code-kg-mcp
+docker compose logs -f strata-mcp
 docker compose logs -f ollama
 ```
 
@@ -176,10 +176,10 @@ and prints a note if it corrects the casing:
 
 Check what slug the graph actually uses:
 ```bash
-docker compose exec code-kg-mcp python -c "
+docker compose exec strata-mcp python -c "
 import asyncio, sys; sys.path.insert(0,'src')
-from code_kg.config import Settings
-from code_kg.graph.client import Neo4jClient
+from strata.config import Settings
+from strata.graph.client import Neo4jClient
 async def r():
     c = Neo4jClient(Settings().neo4j); await c.connect()
     rows = await c.execute_query('MATCH (r:Repo) RETURN r.name', {})
@@ -207,7 +207,7 @@ is available, or restart the stack — `ollama-init` will pull the configured mo
 | Local Python | `http://localhost:11434` (set via `SUMMARY__BASE_URL` in `.env.local`) |
 
 The `docker-compose.yml` always sets `SUMMARY__BASE_URL=http://ollama:11434` for the
-`code-kg-mcp` container, overriding whatever is in `.env`. You only need to set
+`strata-mcp` container, overriding whatever is in `.env`. You only need to set
 `SUMMARY__BASE_URL` in `.env` / `.env.local` when running outside of Docker.
 
 ### Neo4j won't start
@@ -220,7 +220,7 @@ lsof -i :7687    # check if port is already in use
 ### MCP server not responding
 
 ```bash
-docker compose logs code-kg-mcp
+docker compose logs strata-mcp
 curl http://localhost:8765/api/repo-state?slug=test
 ```
 
@@ -229,8 +229,8 @@ curl http://localhost:8765/api/repo-state?slug=test
 Test the Neo4j connection:
 
 ```bash
-docker compose exec code-kg-mcp python -c \
+docker compose exec strata-mcp python -c \
   "import asyncio, sys; sys.path.insert(0,'src'); \
-   from code_kg.config import Settings; from code_kg.graph.client import Neo4jClient; \
+   from strata.config import Settings; from strata.graph.client import Neo4jClient; \
    asyncio.run(Neo4jClient(Settings().neo4j).health_check())"
 ```

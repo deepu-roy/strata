@@ -1,9 +1,8 @@
 """Tests for layer assignment heuristics."""
 
-import pytest
 
-from code_kg.domain.models import RawNode
-from code_kg.ingestion.layers import assign_layer, assign_layers_to_nodes
+from strata.domain.models import RawNode
+from strata.ingestion.layers import assign_layer, assign_layers_to_nodes
 
 
 class TestAssignLayerByName:

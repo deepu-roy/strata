@@ -18,4 +18,4 @@ COPY tests tests
 
 EXPOSE 8765
 
-CMD ["code-kg", "mcp", "http"]
+CMD ["strata", "mcp", "http"]

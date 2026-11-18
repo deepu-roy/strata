@@ -7,25 +7,21 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from code_kg.domain.models import (
+from strata.domain.models import (
     DeleteRepoInput,
     IngestRepoInput,
     RefreshEnrichmentInput,
-    ReindexFileInput,
 )
-from code_kg.ingestion.git import FileDiff, _run, get_diff, get_head_sha, is_git_repo
-from code_kg.ingestion.cleanup import update_repo_meta, get_repo_meta
-from code_kg.ingestion.pipeline import collect_files, pat_to_extensions
-from code_kg.mcp.tools.write import (
+from strata.ingestion.git import FileDiff, _run, get_diff, get_head_sha, is_git_repo
+from strata.ingestion.pipeline import collect_files, pat_to_extensions
+from strata.mcp.tools.write import (
+    _is_local_path,
+    _job_id,
     delete_repo,
     get_repo_state,
     ingest_repo,
-    reindex_file,
     refresh_summaries,
-    _is_local_path,
-    _job_id,
 )
-
 
 # ── git.py unit tests ─────────────────────────────────────────────────────────
 
@@ -43,7 +39,7 @@ class TestGitHelpers:
         assert "git" in out.lower()
 
     def test_run_raises_on_failure(self):
-        from code_kg.ingestion.git import GitError
+        from strata.ingestion.git import GitError
         with pytest.raises(GitError):
             _run(["invalid-subcommand-xyz"])
 
@@ -162,7 +158,7 @@ class TestDeleteRepo:
     async def test_delete_calls_hard_delete_when_confirmed(self):
         client = MagicMock()
         inp = DeleteRepoInput(repo_slug="my-repo", confirm=True)
-        with patch("code_kg.mcp.tools.write.hard_delete_repo",
+        with patch("strata.mcp.tools.write.hard_delete_repo",
                    new=AsyncMock(return_value=42)) as mock_del:
             result = await delete_repo(client, inp)
         assert result["status"] == "completed"
@@ -194,11 +190,11 @@ class TestIngestRepoLocal:
         settings.workdir = str(tmp_path / "workdir")
         settings.summary.max_concurrent = 1
 
-        with patch("code_kg.ingestion.pipeline.normalize_and_upsert",
+        with patch("strata.ingestion.pipeline.normalize_and_upsert",
                    new=AsyncMock(return_value=(1, 0))), \
-             patch("code_kg.ingestion.cleanup.mark_files_seen", new=AsyncMock()), \
-             patch("code_kg.ingestion.cleanup.soft_delete_orphans", new=AsyncMock(return_value=0)), \
-             patch("code_kg.ingestion.cleanup.update_repo_meta", new=AsyncMock()):
+             patch("strata.ingestion.cleanup.mark_files_seen", new=AsyncMock()), \
+             patch("strata.ingestion.cleanup.soft_delete_orphans", new=AsyncMock(return_value=0)), \
+             patch("strata.ingestion.cleanup.update_repo_meta", new=AsyncMock()):
 
             inp = IngestRepoInput(
                 repo_url=str(tmp_path),
@@ -223,10 +219,10 @@ class TestRefreshSummaries:
         settings.summary.provider = "ollama"
         settings.embedding.provider = "sentence_transformers"
 
-        with patch("code_kg.ingestion.enrichment.load_unenriched_nodes",
+        with patch("strata.ingestion.enrichment.load_unenriched_nodes",
                    new=AsyncMock(return_value=[])), \
-             patch("code_kg.providers.summary.base.build_summary_provider", return_value=MagicMock()), \
-             patch("code_kg.providers.embedding.base.build_embedding_provider", return_value=MagicMock()):
+             patch("strata.providers.summary.base.build_summary_provider", return_value=MagicMock()), \
+             patch("strata.providers.embedding.base.build_embedding_provider", return_value=MagicMock()):
             inp = RefreshEnrichmentInput(repo="myrepo", only_if_missing=True)
             result = await refresh_summaries(client, settings, inp)
 
@@ -240,7 +236,7 @@ class TestRefreshSummaries:
 class TestGetRepoState:
     async def test_returns_not_exists_for_unknown_repo(self):
         client = MagicMock()
-        with patch("code_kg.mcp.tools.write.get_repo_meta",
+        with patch("strata.mcp.tools.write.get_repo_meta",
                    new=AsyncMock(return_value=None)):
             state = await get_repo_state(client, "unknown-repo")
         assert state.exists is False
@@ -249,7 +245,7 @@ class TestGetRepoState:
     async def test_returns_meta_for_known_repo(self):
         client = MagicMock()
         client.execute_query = AsyncMock(return_value=[{"cnt": 42}])
-        with patch("code_kg.mcp.tools.write.get_repo_meta",
+        with patch("strata.mcp.tools.write.get_repo_meta",
                    new=AsyncMock(return_value={
                        "last_commit_sha": "abc123",
                        "last_ingest_at": "2026-06-01",

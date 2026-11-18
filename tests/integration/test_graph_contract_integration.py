@@ -4,7 +4,7 @@ resulting graph matches ``contract/graph-contract.json``.
 Uses testcontainers (Docker required; skipped otherwise). If Docker via Colima
 fails on the Ryuk reaper, run with ``TESTCONTAINERS_RYUK_DISABLED=true``.
 Embeddings/summaries are not needed: ingestion does not call any model.
-Override the image with ``CODEKG_TEST_NEO4J_IMAGE``.
+Override the image with ``STRATA_TEST_NEO4J_IMAGE``.
 """
 
 import asyncio
@@ -14,15 +14,15 @@ from pathlib import Path
 
 import pytest
 
-from code_kg.config import Neo4jSettings, Settings
-from code_kg.graph.client import Neo4jClient
-from code_kg.graph.migrations import run_migrations
-from code_kg.ingestion.pipeline import run_pipeline
+from strata.config import Neo4jSettings, Settings
+from strata.graph.client import Neo4jClient
+from strata.graph.migrations import run_migrations
+from strata.ingestion.pipeline import run_pipeline
 from tests.contract.contract_loader import load_contract
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 REPO = "contract-fixture"
-IMAGE = os.environ.get("CODEKG_TEST_NEO4J_IMAGE", "neo4j:5.15")
+IMAGE = os.environ.get("STRATA_TEST_NEO4J_IMAGE", "neo4j:5.15")
 PASSWORD = "contract-test-pw"
 
 _TYPE_CHECKS = {
@@ -215,13 +215,13 @@ def test_constraints_and_indexes_created(graph, contract):
 
 
 def test_mcp_read_tool_shapes(neo4j_settings, graph, contract):
-    from code_kg.domain.models import (
+    from strata.domain.models import (
         FindNodesInput,
         GetArchitectureInput,
         GetNodeInput,
         ImpactAnalysisInput,
     )
-    from code_kg.mcp.tools import read as R
+    from strata.mcp.tools import read as R
 
     tools = contract["mcp"]["tools"]
 
@@ -272,10 +272,10 @@ def test_mcp_read_tool_shapes(neo4j_settings, graph, contract):
 
 
 def test_cli_bootstrap_and_ingest(neo4j_settings, monkeypatch):
-    """The documented consumer path: ``code-kg bootstrap`` then ``code-kg ingest``."""
+    """The documented consumer path: ``strata bootstrap`` then ``strata ingest``."""
     from typer.testing import CliRunner
 
-    from code_kg.cli import app
+    from strata.cli import app
 
     n = neo4j_settings.neo4j
     monkeypatch.setenv("NEO4J__URI", n.uri)

@@ -4,8 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from code_kg.ingestion.tests_mapper import (
-    TestsMapperResult,
+from strata.ingestion.tests_mapper import (
     _base_name_from_path,
     _is_test_path,
     _mirror_path,
@@ -14,7 +13,6 @@ from code_kg.ingestion.tests_mapper import (
     _strip_test_suffix,
     map_tests,
 )
-
 
 # ── helper function tests ─────────────────────────────────────────────────────
 
@@ -158,7 +156,7 @@ class TestMapTests:
             [{"r": {}}],               # upsert_edge (TESTS MERGE)
         ])
 
-        with patch("code_kg.ingestion.tests_mapper.upsert_edge",
+        with patch("strata.ingestion.tests_mapper.upsert_edge",
                    new=AsyncMock(return_value=True)):
             result = await map_tests(client, "repo")
 
@@ -188,7 +186,7 @@ class TestMapTests:
             emitted.append((from_id, to_id, edge.weight))
             return True
 
-        with patch("code_kg.ingestion.tests_mapper.upsert_edge", side_effect=fake_upsert):
+        with patch("strata.ingestion.tests_mapper.upsert_edge", side_effect=fake_upsert):
             result = await map_tests(client, "repo")
 
         # Both strategies fire but deduplication keeps only one pair

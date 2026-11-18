@@ -1,9 +1,8 @@
 """Tests for normalization module (symbol registry and call resolution)."""
 
-import pytest
 
-from code_kg.domain.models import RawNode
-from code_kg.ingestion.normalize import CallResolver, SymbolRegistry
+from strata.domain.models import RawNode
+from strata.ingestion.normalize import CallResolver, SymbolRegistry
 
 
 class TestSymbolRegistry:

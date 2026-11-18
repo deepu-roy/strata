@@ -6,9 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from code_kg.domain.models import RawEdge, RawNode
-from code_kg.ingestion.sources.docs_markdown import MarkdownSource, _slugify_heading, _resolve_link
-
+from strata.domain.models import RawNode
+from strata.ingestion.sources.docs_markdown import MarkdownSource, _resolve_link, _slugify_heading
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Helpers

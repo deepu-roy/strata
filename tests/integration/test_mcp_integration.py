@@ -12,6 +12,7 @@ Gaps discovered during testing are documented inline as pytest.warns or xfail.
 
 import os
 import socket
+
 import pytest
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -49,14 +50,14 @@ def neo4j_settings():
     os.environ.setdefault("SUMMARY__PROVIDER", "ollama")
     os.environ.setdefault("SUMMARY__BASE_URL", "http://localhost:11434")
     os.environ.setdefault("SUMMARY__MODEL", "qwen2.5-coder:14b")
-    from code_kg.config import Settings
+    from strata.config import Settings
     return Settings()
 
 
 @pytest.fixture
 async def graph(neo4j_settings):
     """Function-scoped Neo4j client — fresh connection per test."""
-    from code_kg.graph.client import Neo4jClient
+    from strata.graph.client import Neo4jClient
     client = Neo4jClient(neo4j_settings.neo4j)
     await client.connect()
     if not await client.health_check():
@@ -78,7 +79,7 @@ _LAYER_ID = "layer:DevOnHire:service"
 
 class TestRawQueries:
     async def test_fulltext_search_returns_results(self, graph):
-        from code_kg.graph import queries as Q
+        from strata.graph import queries as Q
         rows = await graph.execute_query(Q.FULLTEXT_SEARCH_CODE, {
             "query": "candidate",
             "repos": None,
@@ -91,7 +92,7 @@ class TestRawQueries:
         assert rows[0]["score"] is not None and rows[0]["score"] > 0
 
     async def test_fulltext_search_repo_filter(self, graph):
-        from code_kg.graph import queries as Q
+        from strata.graph import queries as Q
         rows_all = await graph.execute_query(Q.FULLTEXT_SEARCH_CODE, {
             "query": "client", "repos": None, "types": None, "layers": None, "limit": 20,
         })
@@ -104,7 +105,7 @@ class TestRawQueries:
         assert len(rows_filtered) <= len(rows_all)
 
     async def test_fulltext_search_type_filter(self, graph):
-        from code_kg.graph import queries as Q
+        from strata.graph import queries as Q
         rows = await graph.execute_query(Q.FULLTEXT_SEARCH_CODE, {
             "query": "candidate",
             "repos": [_REPO],
@@ -117,7 +118,7 @@ class TestRawQueries:
             assert "Class" in r["labels"], f"Non-Class result: {r['labels']}"
 
     async def test_fulltext_search_layer_filter(self, graph):
-        from code_kg.graph import queries as Q
+        from strata.graph import queries as Q
         rows = await graph.execute_query(Q.FULLTEXT_SEARCH_CODE, {
             "query": "service",
             "repos": [_REPO],
@@ -132,7 +133,7 @@ class TestRawQueries:
             assert r["layer"] == "service", f"Non-service layer leaked through: {r['layer']!r}"
 
     async def test_get_node_by_id(self, graph):
-        from code_kg.graph import queries as Q
+        from strata.graph import queries as Q
         rows = await graph.execute_query(Q.GET_NODE_BY_ID, {"id": _CLASS_ID})
         assert len(rows) == 1, f"Expected exactly 1 row for {_CLASS_ID}"
         row = rows[0]
@@ -145,12 +146,12 @@ class TestRawQueries:
         assert row["codeSnippet"] is not None, "codeSnippet should be stored from extraction"
 
     async def test_get_node_by_id_missing_returns_empty(self, graph):
-        from code_kg.graph import queries as Q
+        from strata.graph import queries as Q
         rows = await graph.execute_query(Q.GET_NODE_BY_ID, {"id": "nonexistent:id:xyz"})
         assert rows == []
 
     async def test_get_neighbors_returns_repo_and_layer(self, graph):
-        from code_kg.graph import queries as Q
+        from strata.graph import queries as Q
         rows = await graph.execute_query(Q.GET_NEIGHBORS, {
             "id": _CLASS_ID, "edge_types": None, "limit": 20,
         })
@@ -159,7 +160,7 @@ class TestRawQueries:
         assert "BELONGS_TO_LAYER" in edge_types, "Expected BELONGS_TO_LAYER edge"
 
     async def test_get_neighbors_edge_type_filter(self, graph):
-        from code_kg.graph import queries as Q
+        from strata.graph import queries as Q
         rows = await graph.execute_query(Q.GET_NEIGHBORS, {
             "id": _CLASS_ID, "edge_types": ["IN_REPO"], "limit": 10,
         })
@@ -167,14 +168,14 @@ class TestRawQueries:
             assert r["edge_type"] == "IN_REPO"
 
     async def test_list_layers(self, graph):
-        from code_kg.graph import queries as Q
+        from strata.graph import queries as Q
         rows = await graph.execute_query(Q.LIST_LAYERS, {"repo": _REPO})
         assert len(rows) > 0, "Expected layers for DevOnHire"
         names = {r["name"] for r in rows}
         assert "service" in names, f"Expected 'service' layer, got: {names}"
 
     async def test_get_layer_members(self, graph):
-        from code_kg.graph import queries as Q
+        from strata.graph import queries as Q
         rows = await graph.execute_query(Q.GET_LAYER_MEMBERS, {
             "layer_id": _LAYER_ID, "limit": 20,
         })
@@ -184,7 +185,7 @@ class TestRawQueries:
 
     async def test_impact_upstream_uses_calls_edges(self, graph):
         """CALLS edges are now ingested — impact upstream should work for function nodes."""
-        from code_kg.graph import queries as Q
+        from strata.graph import queries as Q
         # Use a function node that is likely called — more specific than Class
         # Find any function that has a CALLS edge pointing to it
         r = await graph.execute_query(
@@ -201,7 +202,7 @@ class TestRawQueries:
 
     @pytest.mark.xfail(reason="TESTS edges not yet ingested")
     async def test_find_tests_for_returns_results(self, graph):
-        from code_kg.graph import queries as Q
+        from strata.graph import queries as Q
         rows = await graph.execute_query(Q.FIND_TESTS_FOR, {
             "id": _CLASS_ID, "min_weight": 0.5,
         })
@@ -209,7 +210,7 @@ class TestRawQueries:
 
     @pytest.mark.xfail(reason="summary_embedding not set until enrichment is run")
     async def test_semantic_search_returns_results(self, graph):
-        from code_kg.graph import queries as Q
+        from strata.graph import queries as Q
         dummy_vec = [0.0] * 384
         rows = await graph.execute_query(Q.SEMANTIC_SEARCH_CODE, {
             "query_vec": dummy_vec, "repos": [_REPO],
@@ -222,8 +223,8 @@ class TestRawQueries:
 
 class TestMCPFindNodes:
     async def test_find_nodes_returns_found_nodes(self, graph):
-        from code_kg.domain.models import FindNodesInput
-        from code_kg.mcp.tools.read import find_nodes
+        from strata.domain.models import FindNodesInput
+        from strata.mcp.tools.read import find_nodes
         inp = FindNodesInput(query="candidate", repos=[_REPO], use_semantic=False)
         result = await find_nodes(graph, inp)
         assert result.total_matched > 0
@@ -237,16 +238,16 @@ class TestMCPFindNodes:
             assert node.score is not None and node.score > 0
 
     async def test_find_nodes_empty_query(self, graph):
-        from code_kg.domain.models import FindNodesInput
-        from code_kg.mcp.tools.read import find_nodes
+        from strata.domain.models import FindNodesInput
+        from strata.mcp.tools.read import find_nodes
         inp = FindNodesInput(query="xyzzynonexistenttoken999", repos=[_REPO], use_semantic=False)
         result = await find_nodes(graph, inp)
         assert result.nodes == []
         assert result.total_matched == 0
 
     async def test_find_nodes_type_filter_classes_only(self, graph):
-        from code_kg.domain.models import FindNodesInput
-        from code_kg.mcp.tools.read import find_nodes
+        from strata.domain.models import FindNodesInput
+        from strata.mcp.tools.read import find_nodes
         # "service" now matches via nameTokens (e.g. ClientService → "client service clientservice")
         inp = FindNodesInput(
             query="service", repos=[_REPO], types=["Class"], use_semantic=False
@@ -257,8 +258,8 @@ class TestMCPFindNodes:
             assert node.type == "Class", f"Non-Class result: {node.type}"
 
     async def test_find_nodes_layer_filter(self, graph):
-        from code_kg.domain.models import FindNodesInput
-        from code_kg.mcp.tools.read import find_nodes
+        from strata.domain.models import FindNodesInput
+        from strata.mcp.tools.read import find_nodes
         # "service" matches via nameTokens + layer filter narrows to service layer
         inp = FindNodesInput(
             query="service", repos=[_REPO], layers=["service"], use_semantic=False
@@ -269,15 +270,15 @@ class TestMCPFindNodes:
             assert node.layer == "service", f"Expected service layer, got: {node.layer!r}"
 
     async def test_find_nodes_limit_respected(self, graph):
-        from code_kg.domain.models import FindNodesInput
-        from code_kg.mcp.tools.read import find_nodes
+        from strata.domain.models import FindNodesInput
+        from strata.mcp.tools.read import find_nodes
         inp = FindNodesInput(query="service", repos=[_REPO], limit=3, use_semantic=False)
         result = await find_nodes(graph, inp)
         assert len(result.nodes) <= 3
 
     async def test_find_nodes_no_embedding_falls_back_to_fulltext(self, graph):
-        from code_kg.domain.models import FindNodesInput
-        from code_kg.mcp.tools.read import find_nodes
+        from strata.domain.models import FindNodesInput
+        from strata.mcp.tools.read import find_nodes
         inp = FindNodesInput(query="client", use_semantic=True)  # use_semantic=True but no embedding
         result = await find_nodes(graph, inp, query_embedding=None)
         # Should not crash; falls back to fulltext
@@ -285,8 +286,8 @@ class TestMCPFindNodes:
 
     @pytest.mark.xfail(reason="No embeddings until enrichment is run")
     async def test_find_nodes_hybrid_rrf_merge(self, graph):
-        from code_kg.domain.models import FindNodesInput
-        from code_kg.mcp.tools.read import find_nodes
+        from strata.domain.models import FindNodesInput
+        from strata.mcp.tools.read import find_nodes
         embedding = [0.1] * 384
         inp = FindNodesInput(query="client", repos=[_REPO], use_semantic=True)
         result = await find_nodes(graph, inp, query_embedding=embedding)
@@ -295,8 +296,8 @@ class TestMCPFindNodes:
 
 class TestMCPGetNode:
     async def test_get_node_detail(self, graph):
-        from code_kg.domain.models import GetNodeInput
-        from code_kg.mcp.tools.read import get_node
+        from strata.domain.models import GetNodeInput
+        from strata.mcp.tools.read import get_node
         inp = GetNodeInput(id=_CLASS_ID)
         result = await get_node(graph, inp)
         assert result is not None
@@ -306,8 +307,8 @@ class TestMCPGetNode:
         assert result.file_path is not None
 
     async def test_get_node_includes_neighbors(self, graph):
-        from code_kg.domain.models import GetNodeInput
-        from code_kg.mcp.tools.read import get_node
+        from strata.domain.models import GetNodeInput
+        from strata.mcp.tools.read import get_node
         inp = GetNodeInput(id=_CLASS_ID, include_neighbors=True)
         result = await get_node(graph, inp)
         assert result is not None
@@ -317,16 +318,16 @@ class TestMCPGetNode:
         assert "BELONGS_TO_LAYER" in edge_types
 
     async def test_get_node_no_neighbors(self, graph):
-        from code_kg.domain.models import GetNodeInput
-        from code_kg.mcp.tools.read import get_node
+        from strata.domain.models import GetNodeInput
+        from strata.mcp.tools.read import get_node
         inp = GetNodeInput(id=_CLASS_ID, include_neighbors=False)
         result = await get_node(graph, inp)
         assert result is not None
         assert result.neighbors == []
 
     async def test_get_node_edge_type_filter(self, graph):
-        from code_kg.domain.models import GetNodeInput
-        from code_kg.mcp.tools.read import get_node
+        from strata.domain.models import GetNodeInput
+        from strata.mcp.tools.read import get_node
         inp = GetNodeInput(
             id=_CLASS_ID,
             include_neighbors=True,
@@ -338,15 +339,15 @@ class TestMCPGetNode:
             assert nbr.edge_type == "IN_REPO"
 
     async def test_get_node_missing_returns_none(self, graph):
-        from code_kg.domain.models import GetNodeInput
-        from code_kg.mcp.tools.read import get_node
+        from strata.domain.models import GetNodeInput
+        from strata.mcp.tools.read import get_node
         inp = GetNodeInput(id="class:NoSuchRepo:no/file.cs:Phantom")
         result = await get_node(graph, inp)
         assert result is None
 
     async def test_get_node_file_node(self, graph):
-        from code_kg.domain.models import GetNodeInput
-        from code_kg.mcp.tools.read import get_node
+        from strata.domain.models import GetNodeInput
+        from strata.mcp.tools.read import get_node
         inp = GetNodeInput(id=_FILE_ID)
         result = await get_node(graph, inp)
         assert result is not None
@@ -355,8 +356,8 @@ class TestMCPGetNode:
 
 class TestMCPImpactAnalysis:
     async def test_impact_analysis_finds_target(self, graph):
-        from code_kg.domain.models import ImpactAnalysisInput
-        from code_kg.mcp.tools.read import impact_analysis
+        from strata.domain.models import ImpactAnalysisInput
+        from strata.mcp.tools.read import impact_analysis
         inp = ImpactAnalysisInput(id=_CLASS_ID)
         result = await impact_analysis(graph, inp)
         assert result is not None
@@ -366,8 +367,8 @@ class TestMCPImpactAnalysis:
     async def test_impact_analysis_upstream_or_downstream_present(self, graph):
         """With CALLS edges in the graph, upstream or downstream should be populated
         for nodes that are actually called or that call others."""
-        from code_kg.domain.models import ImpactAnalysisInput
-        from code_kg.mcp.tools.read import impact_analysis
+        from strata.domain.models import ImpactAnalysisInput
+        from strata.mcp.tools.read import impact_analysis
         inp = ImpactAnalysisInput(id=_CLASS_ID)
         result = await impact_analysis(graph, inp)
         assert result is not None
@@ -377,23 +378,23 @@ class TestMCPImpactAnalysis:
         assert isinstance(result.downstream, list)
 
     async def test_impact_analysis_empty_tests_without_tests_edges(self, graph):
-        from code_kg.domain.models import ImpactAnalysisInput
-        from code_kg.mcp.tools.read import impact_analysis
+        from strata.domain.models import ImpactAnalysisInput
+        from strata.mcp.tools.read import impact_analysis
         inp = ImpactAnalysisInput(id=_CLASS_ID, include_tests=True)
         result = await impact_analysis(graph, inp)
         assert result is not None
         assert result.tests == [], "Expected empty tests — TESTS edges not ingested yet"
 
     async def test_impact_analysis_missing_node_returns_none(self, graph):
-        from code_kg.domain.models import ImpactAnalysisInput
-        from code_kg.mcp.tools.read import impact_analysis
+        from strata.domain.models import ImpactAnalysisInput
+        from strata.mcp.tools.read import impact_analysis
         inp = ImpactAnalysisInput(id="class:NoRepo:no/file.cs:Ghost")
         result = await impact_analysis(graph, inp)
         assert result is None
 
     async def test_impact_analysis_layer_breakdown(self, graph):
-        from code_kg.domain.models import ImpactAnalysisInput
-        from code_kg.mcp.tools.read import impact_analysis
+        from strata.domain.models import ImpactAnalysisInput
+        from strata.mcp.tools.read import impact_analysis
         inp = ImpactAnalysisInput(id=_CLASS_ID)
         result = await impact_analysis(graph, inp)
         assert result is not None
@@ -405,7 +406,7 @@ class TestMCPImpactAnalysis:
 class TestMCPTraceCallChain:
     @pytest.mark.xfail(reason="No CALLS edges in graph yet — call-chain tracing requires them")
     async def test_trace_call_chain_finds_path(self, graph):
-        from code_kg.mcp.tools.read import trace_call_chain
+        from strata.mcp.tools.read import trace_call_chain
         # With real CALLS edges these IDs would be endpoints of a chain
         result = await trace_call_chain(graph, _CLASS_ID, _FILE_ID)
         assert result is not None
@@ -414,13 +415,13 @@ class TestMCPTraceCallChain:
 
     async def test_trace_call_chain_no_path_returns_none(self, graph):
         """Unconnected nodes → no chain found."""
-        from code_kg.mcp.tools.read import trace_call_chain
+        from strata.mcp.tools.read import trace_call_chain
         result = await trace_call_chain(graph, _CLASS_ID, "nonexistent:target:id")
         assert result is None
 
     async def test_trace_call_chain_same_node_no_path(self, graph):
         """shortestPath doesn't support length=0 for different-node queries."""
-        from code_kg.mcp.tools.read import trace_call_chain
+        from strata.mcp.tools.read import trace_call_chain
         result = await trace_call_chain(graph, _CLASS_ID, _CLASS_ID)
         # Neo4j shortestPath between same node with min length 1 returns nothing
         assert result is None
@@ -428,19 +429,19 @@ class TestMCPTraceCallChain:
 
 class TestMCPFindTestsFor:
     async def test_find_tests_empty_without_tests_edges(self, graph):
-        from code_kg.mcp.tools.read import find_tests_for
+        from strata.mcp.tools.read import find_tests_for
         result = await find_tests_for(graph, _CLASS_ID, min_weight=0.5)
         assert result == [], "Expected empty list — no TESTS edges ingested yet"
 
     @pytest.mark.xfail(reason="TESTS edges require Phase 7 tests_mapper")
     async def test_find_tests_returns_test_functions(self, graph):
-        from code_kg.mcp.tools.read import find_tests_for
+        from strata.mcp.tools.read import find_tests_for
         # After Phase 7, test functions should be linked via TESTS edges
         result = await find_tests_for(graph, _CLASS_ID, min_weight=0.5)
         assert len(result) > 0
 
     async def test_find_tests_missing_node_returns_empty(self, graph):
-        from code_kg.mcp.tools.read import find_tests_for
+        from strata.mcp.tools.read import find_tests_for
         result = await find_tests_for(graph, "nonexistent:id:xyz", min_weight=0.5)
         assert result == []
 
@@ -448,7 +449,7 @@ class TestMCPFindTestsFor:
 class TestMCPSemanticSearch:
     @pytest.mark.xfail(reason="summary_embedding not populated until enrichment is run")
     async def test_semantic_search_code(self, graph):
-        from code_kg.mcp.tools.read import semantic_search
+        from strata.mcp.tools.read import semantic_search
         embedding = [0.1] * 384
         results = await semantic_search(graph, embedding, scope="code", top_k=5, repos=[_REPO])
         assert len(results) > 0, "Expected semantic results after enrichment"
@@ -457,14 +458,14 @@ class TestMCPSemanticSearch:
 
     async def test_semantic_search_empty_without_embeddings(self, graph):
         """Vector index exists but no embeddings stored → returns empty."""
-        from code_kg.mcp.tools.read import semantic_search
+        from strata.mcp.tools.read import semantic_search
         dummy_vec = [0.0] * 384
         results = await semantic_search(graph, dummy_vec, scope="code", top_k=5, repos=[_REPO])
         assert isinstance(results, list)
         # No crash expected; may return empty or very low-confidence results
 
     async def test_semantic_search_invalid_scope_returns_empty(self, graph):
-        from code_kg.mcp.tools.read import semantic_search
+        from strata.mcp.tools.read import semantic_search
         dummy_vec = [0.0] * 384
         results = await semantic_search(graph, dummy_vec, scope="invalid", top_k=5)
         assert results == []

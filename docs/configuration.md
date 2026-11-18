@@ -1,6 +1,6 @@
 # Configuration Reference
 
-All settings are read from environment variables. CodeKG loads `.env` first, then
+All settings are read from environment variables. Strata loads `.env` first, then
 `.env.local` (which overrides `.env`). Use double-underscore `__` as the nested
 key separator.
 
@@ -49,7 +49,7 @@ key separator.
 | `text-embedding-3-small` | openai | 1536 | Good balance of cost and quality |
 | `text-embedding-3-large` | openai | 3072 | Highest quality, ~2× cost of small |
 
-> **Important:** The vector index dimension is set at `bootstrap` time from `EMBEDDING__DIMENSIONS` (derived from the model). If you change the embedding model, drop and recreate the Neo4j vector index, then re-run `code-kg enrich` for all repos.
+> **Important:** The vector index dimension is set at `bootstrap` time from `EMBEDDING__DIMENSIONS` (derived from the model). If you change the embedding model, drop and recreate the Neo4j vector index, then re-run `strata enrich` for all repos.
 
 ---
 
@@ -84,7 +84,7 @@ adapters for the quirks (unsupported sampling parameters, JSON mode, default end
 | Anything else LiteLLM supports | `bedrock/…`, `vertex_ai/…`, `groq/…` | per the LiteLLM docs |
 
 **When you switch provider, clear `SUMMARY__BASE_URL`** unless you really want a custom endpoint.
-A leftover Ollama URL would otherwise receive the cloud provider's requests (CodeKG logs a warning
+A leftover Ollama URL would otherwise receive the cloud provider's requests (Strata logs a warning
 when it sees this).
 
 ### Legacy configuration
@@ -139,7 +139,7 @@ SUMMARY__API_KEY=lm-studio
 ### Adding a provider
 
 Most providers need nothing: LiteLLM's model strings already cover them. If one needs special
-handling, add a small class to `code_kg/providers/llm/adapters.py` (`matches` + `prepare`) and call
+handling, add a small class to `strata/providers/llm/adapters.py` (`matches` + `prepare`) and call
 `register_adapter(...)`; the gateway is untouched.
 
 > Embeddings are configured separately (`EMBEDDING__*`, above). Claude has no embeddings API, so the
@@ -156,7 +156,7 @@ hardcoded model names in the compose file. To switch the LLM model:
    server starts when it is an Ollama model, and does nothing for a cloud model
 
 > **Important:** If you change `EMBEDDING__MODEL` you must also drop and recreate the
-> Neo4j vector index and re-run `code-kg enrich` for all repos (the vector index
+> Neo4j vector index and re-run `strata enrich` for all repos (the vector index
 > dimension is fixed at bootstrap time). LLM model changes (`SUMMARY__MODEL`) have
 > no such constraint.
 
@@ -176,9 +176,9 @@ hardcoded model names in the compose file. To switch the LLM model:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `WORKDIR` | `/tmp/code-kg-repos` | Local directory where remote GitHub repos are cloned |
-| `CODEKG_GIT_TOKEN` | _(unset)_ | Access token for private HTTP(S) repos. Sent as an `Authorization: Basic` extra header through git's environment config; never placed in argv, URLs or logs |
-| `CODEKG_GIT_USER` | `x-access-token` | Username paired with the token (GitHub apps/PATs accept the default) |
+| `WORKDIR` | `/tmp/strata-repos` | Local directory where remote GitHub repos are cloned |
+| `STRATA_GIT_TOKEN` | _(unset)_ | Access token for private HTTP(S) repos. Sent as an `Authorization: Basic` extra header through git's environment config; never placed in argv, URLs or logs |
+| `STRATA_GIT_USER` | `x-access-token` | Username paired with the token (GitHub apps/PATs accept the default) |
 
 Clones are stored as `WORKDIR/<repo-name>-<8 hex of sha1(normalised url)>`, so two different
 repositories with the same name never share a directory. On every ingest the clone is fetched
@@ -226,9 +226,9 @@ MCP_HTTP_PORT=8765
 LOG_LEVEL=INFO
 
 # ── Git workdir (for remote repo ingestion) ───────────────────────
-WORKDIR=/tmp/code-kg-repos
-# CODEKG_GIT_TOKEN=...   # private repos (HTTP/HTTPS)
-# CODEKG_GIT_USER=x-access-token
+WORKDIR=/tmp/strata-repos
+# STRATA_GIT_TOKEN=...   # private repos (HTTP/HTTPS)
+# STRATA_GIT_USER=x-access-token
 ```
 
 ---
@@ -237,7 +237,7 @@ WORKDIR=/tmp/code-kg-repos
 
 ### Enrichment throughput
 
-`SUMMARY__MAX_CONCURRENT` controls how many parallel LLM calls run during `code-kg enrich`. Rule of thumb:
+`SUMMARY__MAX_CONCURRENT` controls how many parallel LLM calls run during `strata enrich`. Rule of thumb:
 
 - Local CPU inference (Ollama, llama.cpp, LM Studio on CPU): **`1`** — most local servers process one request at a time; higher concurrency causes queued requests to reset, producing spurious retry warnings
 - Local GPU inference: `4–8`
@@ -253,7 +253,7 @@ For repos with > 5 000 nodes, run enrichment in incremental batches:
 
 ```bash
 # Process 500 nodes per run, repeat until done
-code-kg enrich --repo my-service --limit 500
+strata enrich --repo my-service --limit 500
 ```
 
 Each run picks up where the last left off (only unenriched nodes are processed).

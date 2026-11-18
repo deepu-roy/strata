@@ -1,19 +1,14 @@
 """Tests for the enrichment pipeline and providers."""
 
-import asyncio
-from typing import Optional
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
-import pytest
-
-from code_kg.domain.models import NormalizedNode, SummaryRequest, SummaryResponse
-from code_kg.ingestion.enrichment import (
+from strata.domain.models import NormalizedNode, SummaryRequest, SummaryResponse
+from strata.ingestion.enrichment import (
     _build_summary_request,
     enrich_batch,
     enrich_node,
 )
-from code_kg.providers.summary.prompts import build_prompt
-
+from strata.providers.summary.prompts import build_prompt
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Fixtures

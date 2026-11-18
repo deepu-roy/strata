@@ -1,19 +1,14 @@
 """Tests that verify the bug fixes and design-deviation corrections."""
 
-import asyncio
-from pathlib import Path
-from unittest.mock import AsyncMock, patch
-import tempfile
 import os
+import tempfile
+from pathlib import Path
 
-import pytest
-
-from code_kg.domain.models import RawEdge, RawNode, NormalizedNode
-from code_kg.ingestion.upsert import (
-    normalize_node,
+from strata.domain.models import RawEdge, RawNode
+from strata.ingestion.upsert import (
     _resolve_import_edges,
+    normalize_node,
 )
-
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Fix 1 — JavaSource RawEdge uses correct fields (from_id / to_id)
@@ -22,7 +17,7 @@ from code_kg.ingestion.upsert import (
 class TestJavaSourceEdgeFields:
     async def test_java_import_edge_has_correct_fields(self):
         """JavaSource must yield RawEdge with from_id and to_id, not source_file/target_path."""
-        from code_kg.ingestion.sources.code_java import JavaSource
+        from strata.ingestion.sources.code_java import JavaSource
 
         java_code = b"import java.util.List;\npublic class Foo {}"
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -51,7 +46,7 @@ class TestJavaSourceEdgeFields:
 class TestCLIBucketing:
     async def test_all_rawnode_types_go_to_nodes_bucket(self):
         """Classes, functions, interfaces extracted from TS must end up in all_nodes."""
-        from code_kg.ingestion.sources.code_typescript import TypeScriptSource
+        from strata.ingestion.sources.code_typescript import TypeScriptSource
 
         ts_code = b"""
         export class MyService {}
@@ -85,7 +80,7 @@ class TestCLIBucketing:
 
 class TestCodeSnippet:
     async def test_typescript_class_has_code_snippet(self):
-        from code_kg.ingestion.sources.code_typescript import TypeScriptSource
+        from strata.ingestion.sources.code_typescript import TypeScriptSource
 
         ts_code = b"export class MyService { getValue(): string { return 'x'; } }"
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -102,7 +97,7 @@ class TestCodeSnippet:
         assert "MyService" in cls_node.code_snippet
 
     async def test_csharp_method_has_code_snippet(self):
-        from code_kg.ingestion.sources.code_csharp import CSharpSource
+        from strata.ingestion.sources.code_csharp import CSharpSource
 
         cs_code = b"""
 public class Ctrl {
@@ -121,7 +116,7 @@ public class Ctrl {
         assert nodes[0].code_snippet is not None
 
     async def test_java_method_has_code_snippet(self):
-        from code_kg.ingestion.sources.code_java import JavaSource
+        from strata.ingestion.sources.code_java import JavaSource
 
         java_code = b"public class Svc { public void doWork() {} }"
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -136,7 +131,7 @@ public class Ctrl {
         assert nodes[0].code_snippet is not None
 
     def test_snippet_capped_at_2000_chars(self):
-        from code_kg.ingestion.sources.code_typescript import _extract_snippet
+        from strata.ingestion.sources.code_typescript import _extract_snippet
         long_code = b"x" * 5000
         snippet = _extract_snippet(long_code, 0, 5000)
         assert len(snippet) == 2000
@@ -148,7 +143,7 @@ public class Ctrl {
 
 class TestFileHash:
     async def test_file_node_has_file_hash_in_extra(self):
-        from code_kg.ingestion.sources.code_typescript import TypeScriptSource
+        from strata.ingestion.sources.code_typescript import TypeScriptSource
 
         ts_code = b"export const x = 1;"
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -289,24 +284,24 @@ class TestImportEdgeResolution:
 
 class TestProviderProtocolProperties:
     def test_sentence_transformer_provider_has_name(self):
-        from code_kg.providers.embedding.sentence_transformers import SentenceTransformerProvider
-        from code_kg.config import EmbeddingSettings
+        from strata.config import EmbeddingSettings
+        from strata.providers.embedding.sentence_transformers import SentenceTransformerProvider
 
         settings = EmbeddingSettings(provider="sentence_transformers", model="BAAI/bge-small-en-v1.5")
         p = SentenceTransformerProvider(settings)
         assert p.name == "sentence_transformers"
 
     def test_openai_embedding_provider_has_name(self):
-        from code_kg.providers.embedding.openai import OpenAIEmbeddingProvider
-        from code_kg.config import EmbeddingSettings
+        from strata.config import EmbeddingSettings
+        from strata.providers.embedding.openai import OpenAIEmbeddingProvider
 
         settings = EmbeddingSettings(provider="openai", model="text-embedding-3-small", api_key="sk-x")
         p = OpenAIEmbeddingProvider(settings)
         assert p.name == "openai"
 
     def test_ollama_provider_has_name_and_model_version(self):
-        from code_kg.providers.summary.llm import LLMSummaryProvider
-        from code_kg.config import SummarySettings
+        from strata.config import SummarySettings
+        from strata.providers.summary.llm import LLMSummaryProvider
 
         settings = SummarySettings(provider="ollama", model="qwen2.5-coder:14b")
         p = LLMSummaryProvider(settings)
@@ -314,8 +309,8 @@ class TestProviderProtocolProperties:
         assert p.model_version == "qwen2.5-coder:14b"
 
     def test_openai_summary_provider_has_name_and_model_version(self):
-        from code_kg.providers.summary.llm import LLMSummaryProvider
-        from code_kg.config import SummarySettings
+        from strata.config import SummarySettings
+        from strata.providers.summary.llm import LLMSummaryProvider
 
         settings = SummarySettings(provider="openai", model="gpt-4o-mini", api_key="sk-x")
         p = LLMSummaryProvider(settings)

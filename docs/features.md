@@ -1,12 +1,12 @@
 # Features
 
-A full catalogue of what CodeKG does and how each piece works.
+A full catalogue of what Strata does and how each piece works.
 
 ---
 
 ## 1. Multi-language AST extraction
 
-CodeKG uses [tree-sitter](https://tree-sitter.github.io/tree-sitter/) to parse source files into typed graph nodes and edges — no regex, no heuristic string scanning.
+Strata uses [tree-sitter](https://tree-sitter.github.io/tree-sitter/) to parse source files into typed graph nodes and edges — no regex, no heuristic string scanning.
 
 | Language | What is extracted |
 |----------|------------------|
@@ -21,7 +21,7 @@ Each function and method node carries:
 - **`file_path`** — relative path to the source file within the repository
 - **`nameTokens`** — camelCase-split tokens for better fulltext search (e.g. `ClientService` → `client service clientservice`)
 
-> **Source code is not stored in the graph.** `codeSnippet` was removed to keep the graph lean — a large repo's method bodies can add tens of MB of duplicated text to Neo4j. Instead, use `file_path` + `line_range` to read source directly from the repository. At enrichment time, CodeKG reads code from disk automatically using the `source_path` recorded in the `:Repo` node.
+> **Source code is not stored in the graph.** `codeSnippet` was removed to keep the graph lean — a large repo's method bodies can add tens of MB of duplicated text to Neo4j. Instead, use `file_path` + `line_range` to read source directly from the repository. At enrichment time, Strata reads code from disk automatically using the `source_path` recorded in the `:Repo` node.
 
 ---
 
@@ -79,7 +79,7 @@ Nodes that don't match any rule get `layer=NULL`.
 
 ## 4. LLM enrichment
 
-After ingestion, run `code-kg enrich` to generate:
+After ingestion, run `strata enrich` to generate:
 
 - **Summary** — a 1–3 sentence natural-language description of what the node does
 - **Tags** — a list of semantic labels (e.g. `["authentication", "jwt", "guard"]`)
@@ -129,7 +129,7 @@ Filters available: `repos`, `types` (node label), `layers`. All filters are addi
 
 ## 8. Test mapping
 
-`code-kg test-map` (or the `run_test_map` MCP tool) infers `TESTS` edges using three weighted strategies:
+`strata test-map` (or the `run_test_map` MCP tool) infers `TESTS` edges using three weighted strategies:
 
 | Strategy | How it works | Weight |
 |----------|-------------|--------|
@@ -143,7 +143,7 @@ Edges are only written when the combined confidence exceeds `min_weight` (defaul
 
 ## 9. Documentation linking
 
-`code-kg link-docs` (or `refresh_doc_links` MCP tool) infers `DOCUMENTS` edges from Markdown sections to code nodes using two passes:
+`strata link-docs` (or `refresh_doc_links` MCP tool) infers `DOCUMENTS` edges from Markdown sections to code nodes using two passes:
 
 1. **Name matching** — sections that mention a symbol name get a `MENTIONS` edge automatically during ingestion.
 2. **LLM classification** — for each section, candidate code nodes are retrieved by name match and optionally vector similarity; the LLM then assigns a confidence score to each. Edges are written when confidence ≥ `min_confidence` (default 0.3).
@@ -152,7 +152,7 @@ Edges are only written when the combined confidence exceeds `min_weight` (defaul
 
 ## 10. Incremental ingestion
 
-When triggered via `ingest_repo` with a `base_commit_sha`, CodeKG:
+When triggered via `ingest_repo` with a `base_commit_sha`, Strata:
 
 1. Calls `git diff` between the two commits
 2. Extracts only the changed/added files
@@ -179,7 +179,7 @@ See [MCP Setup Guide](mcp-setup.md) and [MCP Tools Reference](mcp-tools.md).
 ## 12. GitHub Actions integration
 
 A ready-to-use workflow file for the DevOnHire example is at
-`.github/workflows/code-kg-ingest.yml`. It:
+`.github/workflows/strata-ingest.yml`. It:
 
 - Triggers on push to `main`/`master` for source-file changes
 - Resolves the last-ingested commit via `GET /api/repo-state`
@@ -190,4 +190,4 @@ A ready-to-use workflow file for the DevOnHire example is at
 
 ## 13. Evaluation suite
 
-`code-kg eval run --server http://localhost:8765` runs 10 end-to-end questions against the live MCP server and produces a Markdown report in `eval-results/`. The suite covers discovery, navigation, analysis, cross-domain, and guard/null-safety scenarios.
+`strata eval run --server http://localhost:8765` runs 10 end-to-end questions against the live MCP server and produces a Markdown report in `eval-results/`. The suite covers discovery, navigation, analysis, cross-domain, and guard/null-safety scenarios.

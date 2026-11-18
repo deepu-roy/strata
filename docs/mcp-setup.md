@@ -1,6 +1,6 @@
 # MCP Setup Guide
 
-This guide shows how to connect CodeKG's MCP server to AI coding assistants
+This guide shows how to connect Strata's MCP server to AI coding assistants
 and custom agents. Read tools give your assistant read-only access to the graph;
 write tools let it trigger ingestion and enrichment.
 
@@ -12,10 +12,10 @@ The MCP server must be running and the graph must be bootstrapped and populated:
 
 ```bash
 # Start the HTTP server (needed for Copilot, agents, CI)
-code-kg mcp http
+strata mcp http
 
 # Or start the stdio server (needed for Claude Code / Claude Desktop)
-code-kg mcp stdio
+strata mcp stdio
 ```
 
 Verify it's responding:
@@ -30,7 +30,7 @@ See [Quick Start](quickstart.md) if you haven't ingested a repo yet.
 
 ## Claude Code (stdio transport)
 
-Add CodeKG to your Claude Code MCP config. The stdio transport is the most common
+Add Strata to your Claude Code MCP config. The stdio transport is the most common
 and doesn't require a running HTTP server — Claude Code spawns the process itself.
 
 ### Global config (`~/.claude/settings.json`)
@@ -38,8 +38,8 @@ and doesn't require a running HTTP server — Claude Code spawns the process its
 ```json
 {
   "mcpServers": {
-    "code-kg": {
-      "command": "code-kg",
+    "strata": {
+      "command": "strata",
       "args": ["mcp", "stdio"],
       "env": {
         "NEO4J__URI": "bolt://localhost:7687",
@@ -56,8 +56,8 @@ and doesn't require a running HTTP server — Claude Code spawns the process its
 ```json
 {
   "mcpServers": {
-    "code-kg": {
-      "command": "code-kg",
+    "strata": {
+      "command": "strata",
       "args": ["mcp", "stdio"]
     }
   }
@@ -72,9 +72,9 @@ In Claude Code, run:
 ```
 /mcp
 ```
-You should see `code-kg` listed with its tools. Then ask:
+You should see `strata` listed with its tools. Then ask:
 ```
-Use the code-kg find_nodes tool to search for "authentication" in my-repo
+Use the strata find_nodes tool to search for "authentication" in my-repo
 ```
 
 ---
@@ -86,13 +86,13 @@ the embedding model loaded once and shared across sessions):
 
 ```bash
 # In one terminal
-code-kg mcp http   # starts on localhost:8765
+strata mcp http   # starts on localhost:8765
 ```
 
 ```json
 {
   "mcpServers": {
-    "code-kg": {
+    "strata": {
       "type": "http",
       "url": "http://localhost:8765/mcp"
     }
@@ -106,14 +106,14 @@ code-kg mcp http   # starts on localhost:8765
 
 Copilot uses the HTTP transport via the MCP server spec.
 
-1. Start the HTTP server: `code-kg mcp http`
+1. Start the HTTP server: `strata mcp http`
 
 2. Add to your VS Code `settings.json`:
 
 ```json
 {
   "github.copilot.chat.mcp.servers": {
-    "code-kg": {
+    "strata": {
       "url": "http://localhost:8765/mcp",
       "headers": {}
     }
@@ -123,7 +123,7 @@ Copilot uses the HTTP transport via the MCP server spec.
 
 3. In Copilot Chat, switch to **Agent mode** and ask:
 ```
-@code-kg find functions in the service layer that handle authentication
+@strata find functions in the service layer that handle authentication
 ```
 
 ---
@@ -135,7 +135,7 @@ JetBrains AI Assistant supports MCP via HTTP. Start the server, then add it in
 
 ```
 URL: http://localhost:8765/mcp
-Name: code-kg
+Name: strata
 ```
 
 ---
@@ -269,21 +269,21 @@ open-ended tool exploration.
 
 | Skill file | Trigger phrase | What it does |
 |---|---|---|
-| `codekg-dependency-map.md` | *"understand X and its dependencies"* | Maps a feature flow end-to-end: entry → service → persistence, with tests and noise filtering |
-| `codekg-refactor-impact.md` | *"what breaks if I change X"* | Pre-refactor risk assessment: blast radius, layer breakdown, test coverage, risk rating |
-| `codekg-arch-overview.md` | *"explain this codebase / onboard me"* | Layer map, key classes per layer, entry points, representative call flow |
-| `codekg-find-entrypoint.md` | *"trace the flow for X / how does X reach the DB"* | Confirms controller → service → repository → persistence with contract boundaries |
-| `codekg-test-gaps.md` | *"what's not tested in X"* | Finds functions and classes with no TESTS edges, prioritised by risk |
-| `codekg-add-feature.md` | *"where should I add X / how do I implement X"* | Finds similar existing patterns and maps out files to create/modify |
+| `strata-dependency-map.md` | *"understand X and its dependencies"* | Maps a feature flow end-to-end: entry → service → persistence, with tests and noise filtering |
+| `strata-refactor-impact.md` | *"what breaks if I change X"* | Pre-refactor risk assessment: blast radius, layer breakdown, test coverage, risk rating |
+| `strata-arch-overview.md` | *"explain this codebase / onboard me"* | Layer map, key classes per layer, entry points, representative call flow |
+| `strata-find-entrypoint.md` | *"trace the flow for X / how does X reach the DB"* | Confirms controller → service → repository → persistence with contract boundaries |
+| `strata-test-gaps.md` | *"what's not tested in X"* | Finds functions and classes with no TESTS edges, prioritised by risk |
+| `strata-add-feature.md` | *"where should I add X / how do I implement X"* | Finds similar existing patterns and maps out files to create/modify |
 
 ### Installing in GitHub Copilot (VS Code)
 
 Copy the skill files to your VS Code user skills directory or to `.github/copilot/skills/`
 in your project. Then invoke with:
 ```
-/codekg-dependency-map "create candidate"
-/codekg-refactor-impact "GetClient method"
-/codekg-arch-overview "DevOnHire"
+/strata-dependency-map "create candidate"
+/strata-refactor-impact "GetClient method"
+/strata-arch-overview "DevOnHire"
 ```
 
 ### Installing in Claude Code
@@ -301,7 +301,7 @@ The server returned a plain JSON response instead of SSE. Check that `Accept: ap
 
 ### `Connection refused on :8765`
 
-The HTTP server isn't running. Start it with `code-kg mcp http`.
+The HTTP server isn't running. Start it with `strata mcp http`.
 
 ### `Tool returned isError: true`
 
@@ -312,4 +312,4 @@ The Neo4j connection failed or the node ID doesn't exist. Check that:
 
 ### Tools listed but return empty results
 
-The graph may be empty. Run `code-kg ingest` to populate it, then `code-kg enrich` for semantic search.
+The graph may be empty. Run `strata ingest` to populate it, then `strata enrich` for semantic search.

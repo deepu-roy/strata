@@ -2,7 +2,7 @@
 
 import pytest
 
-from code_kg.domain.ids import (
+from strata.domain.ids import (
     extract_id_parts,
     make_class_id,
     make_document_id,

@@ -1,28 +1,25 @@
 """Tests for MCP read tools (mocked Neo4j)."""
 
 from unittest.mock import AsyncMock, MagicMock
-import pytest
 
-from code_kg.domain.models import (
+from strata.domain.models import (
     FindNodesInput,
     GetNodeInput,
     ImpactAnalysisInput,
 )
-from code_kg.mcp.tools.read import (
+from strata.mcp.shaping import (
+    reciprocal_rank_fusion,
+    shape_neighbor,
+    shape_node_detail,
+    shape_node_for_list,
+)
+from strata.mcp.tools.read import (
     find_nodes,
+    find_tests_for,
     get_node,
     impact_analysis,
-    find_tests_for,
-    semantic_search,
     trace_call_chain,
 )
-from code_kg.mcp.shaping import (
-    shape_node_for_list,
-    shape_node_detail,
-    shape_neighbor,
-    reciprocal_rank_fusion,
-)
-
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Shaping helpers
@@ -281,7 +278,7 @@ class TestTraceCallChain:
 
 class TestFindSymbolsInFile:
     async def test_returns_symbols_and_passes_scoped_params(self):
-        from code_kg.mcp.tools.read import find_symbols_in_file
+        from strata.mcp.tools.read import find_symbols_in_file
 
         row = {
             "id": "function:shop:src/pay.py:pay(card)",
@@ -302,13 +299,13 @@ class TestFindSymbolsInFile:
         assert params == {"file_path": "src/pay.py", "repo": "Shop", "limit": 10}
 
     async def test_limit_is_clamped(self):
-        from code_kg.mcp.tools.read import find_symbols_in_file
+        from strata.mcp.tools.read import find_symbols_in_file
 
         client = _make_client([])
         await find_symbols_in_file(client, "a.py", limit=10_000)
         assert client.execute_query.await_args.args[1]["limit"] == 200
 
     async def test_excludes_the_file_node_itself(self):
-        from code_kg.graph import queries as Q
+        from strata.graph import queries as Q
 
         assert "NOT n:File" in Q.FIND_SYMBOLS_IN_FILE

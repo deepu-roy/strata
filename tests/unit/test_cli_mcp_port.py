@@ -1,8 +1,8 @@
-"""`code-kg mcp http --port` overrides MCP_HTTP_PORT (avoid clashing with other apps)."""
+"""`strata mcp http --port` overrides MCP_HTTP_PORT (avoid clashing with other apps)."""
 
 from typer.testing import CliRunner
 
-from code_kg import cli
+from strata import cli
 
 
 def test_mcp_port_and_host_flags_override_settings(monkeypatch):
@@ -21,7 +21,7 @@ def test_mcp_port_and_host_flags_override_settings(monkeypatch):
         seen["host"] = settings.mcp_http_host
         return _Server()
 
-    monkeypatch.setattr("code_kg.mcp.server.create_server", fake_create_server)
+    monkeypatch.setattr("strata.mcp.server.create_server", fake_create_server)
     result = CliRunner().invoke(cli.app, ["mcp", "http", "--port", "8791", "--host", "0.0.0.0"])
     assert result.exit_code == 0, result.output
     assert seen == {"port": 8791, "host": "0.0.0.0", "transport": "streamable-http"}
@@ -39,7 +39,7 @@ def test_mcp_default_port_from_env(monkeypatch):
             pass
 
     monkeypatch.setattr(
-        "code_kg.mcp.server.create_server",
+        "strata.mcp.server.create_server",
         lambda s: seen.setdefault("port", s.mcp_http_port) and _Server(),
     )
     CliRunner().invoke(cli.app, ["mcp", "http"])

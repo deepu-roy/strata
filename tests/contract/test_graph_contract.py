@@ -12,10 +12,10 @@ from typing import Any
 import pytest
 from pydantic import BaseModel, ConfigDict, Field
 
-from code_kg.config import Neo4jSettings, Settings
-from code_kg.domain import ids, models
-from code_kg.domain.schema import LABELS, RELATIONSHIPS
-from code_kg.graph import migrations
+from strata.config import Neo4jSettings, Settings
+from strata.domain import ids, models
+from strata.domain.schema import LABELS, RELATIONSHIPS
+from strata.graph import migrations
 
 from .contract_loader import load_contract
 
@@ -156,7 +156,7 @@ def test_id_builder_matches_contract_format(contract, label):
 
 
 def test_normalizer_ids_follow_contract(contract):
-    from code_kg.ingestion.upsert import normalize_node
+    from strata.ingestion.upsert import normalize_node
 
     spec = contract["node_labels"]
     cases = {
@@ -228,7 +228,7 @@ def _normalise_type(prop: dict) -> str:
 
 @pytest.fixture(scope="module")
 def mcp_tools() -> dict:
-    from code_kg.mcp.server import create_server
+    from strata.mcp.server import create_server
 
     settings = Settings(neo4j=Neo4jSettings(uri="bolt://unused:7687", user="u", password="p"))
     server = create_server(settings)

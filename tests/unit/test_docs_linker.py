@@ -5,15 +5,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from code_kg.ingestion.docs_linker import (
-    DocsLinkerResult,
-    _MIN_CONFIDENCE,
+from strata.ingestion.docs_linker import (
     classify_with_llm,
     find_candidates_by_name,
     find_candidates_by_vector,
     link_docs,
 )
-
 
 # ── find_candidates_by_name ───────────────────────────────────────────────────
 
@@ -182,7 +179,7 @@ class TestLinkDocs:
         settings = MagicMock()
         settings.summary.model = "ollama/qwen"
 
-        with patch("code_kg.ingestion.docs_linker.LLMGateway") as MockLLM:
+        with patch("strata.ingestion.docs_linker.LLMGateway") as MockLLM:
             mock_instance = MagicMock()
             mock_instance.chat = AsyncMock(return_value=json.dumps({
                 "documented": [{"name": "ClientService", "confidence": 0.85}]
@@ -214,7 +211,7 @@ class TestLinkDocs:
         settings = MagicMock()
         settings.summary.model = "ollama/qwen"
 
-        with patch("code_kg.ingestion.docs_linker.LLMGateway") as MockLLM:
+        with patch("strata.ingestion.docs_linker.LLMGateway") as MockLLM:
             mock_instance = MagicMock()
             # confidence 0.1 < _MIN_CONFIDENCE (0.3) → classify_with_llm returns []
             mock_instance.chat = AsyncMock(return_value=json.dumps({

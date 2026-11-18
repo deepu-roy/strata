@@ -1,7 +1,7 @@
-# CodeKG graph contract
+# Strata graph contract
 
 Machine-readable source of truth: [`contract/graph-contract.json`](../contract/graph-contract.json)
-(version **1.2.0**). CodeKG is the producer; consumers (e.g. KDTIP) may rely on everything
+(version **1.2.0**). Strata is the producer; consumers (e.g. Assay) may rely on everything
 in that file and on nothing else. Drift is caught by `tests/contract/` (no Neo4j) and
 `tests/integration/test_graph_contract_integration.py` (real Neo4j via testcontainers).
 
@@ -12,18 +12,18 @@ Changing the code without updating the contract fails CI.
 ## Bringing up a graph
 
 ```bash
-docker run -d --name codekg-neo4j -p 7687:7687 -e NEO4J_AUTH=neo4j/<pw> neo4j:5.15   # or compose
+docker run -d --name strata-neo4j -p 7687:7687 -e NEO4J_AUTH=neo4j/<pw> neo4j:5.15   # or compose
 export NEO4J__URI=bolt://localhost:7687 NEO4J__USER=neo4j NEO4J__PASSWORD=<pw>
-code-kg bootstrap                                  # constraints + indexes (idempotent)
-code-kg ingest /path/to/repo --repo my-repo \
+strata bootstrap                                  # constraints + indexes (idempotent)
+strata ingest /path/to/repo --repo my-repo \
     --pattern "**/*.ts,**/*.cs,**/*.py,**/*.java,**/*.go,**/*.md"
-code-kg mcp http --port 8765                       # optional: MCP over streamable HTTP
+strata mcp http --port 8765                       # optional: MCP over streamable HTTP
 ```
 
 The default `--pattern` covers only ts/tsx/js/jsx/cs/md; pass `.py`, `.java`, `.go`
-explicitly. Ingestion needs no embedding model or LLM (`code-kg enrich` adds
+explicitly. Ingestion needs no embedding model or LLM (`strata enrich` adds
 `summary`/`tags`/`summary_embedding` separately). Everything is scoped by the `repo`
-property, so `code-kg`/`delete_repo` for one repo never touches another.
+property, so `strata`/`delete_repo` for one repo never touches another.
 
 ## Node labels and ids
 
@@ -67,12 +67,12 @@ Relative to the ingested root, POSIX separators, no leading `./` or `/`. Empty o
 Emitted by `ingest`: `IN_REPO` (CodeNode|DocNode -> Repo), `BELONGS_TO_LAYER` (CodeNode -> Layer),
 `IMPORTS` (File -> File|Module), `CALLS` (Function -> Function, resolved only), `INHERITS`
 (Class -> Class), `IMPLEMENTS` (Class -> Interface), `HAS_SECTION` (Document -> Section),
-`LINKS_TO` (Document -> Document). After `code-kg test-map`: `TESTS` (test -> prod, `weight`).
+`LINKS_TO` (Document -> Document). After `strata test-map`: `TESTS` (test -> prod, `weight`).
 After `link-docs`: `DOCUMENTS` (Section -> CodeNode, `weight`). On reindex: `RENAMED_FROM`
 (old File -> new File). Declared but never written: `MENTIONS`, `INSTANTIATES`, `CONTAINS`,
 `DEFINES`, `EXTENDS`, `REFERENCES`, `EXPOSES_ENDPOINT`, `CALLS_HTTP`.
 
-## Constraints and indexes (created by `code-kg bootstrap`)
+## Constraints and indexes (created by `strata bootstrap`)
 
 Uniqueness on `<Label>.id` for File, Class, Interface, Function, Method, Endpoint, Document,
 Section, Layer, Concept, Repo (names `file_id`, `class_id`, ...). Range indexes
@@ -103,14 +103,14 @@ memory only (about 1 hour, 100 jobs) and there is one active job per `repo_slug`
 everywhere (omitted => tip of `branch`); the recorded sha is always the one actually checked out, and an
 unreachable `base_commit_sha` (force-push) falls back to a full ingest with a `notes` entry.
 `check_repo_changes` fetches and diffs `indexed..head` without indexing (`requires_full` when never indexed or
-the indexed sha is unreachable). Private HTTP(S) repos: set `CODEKG_GIT_TOKEN` (and optionally
-`CODEKG_GIT_USER`, default `x-access-token`); the credential is passed to git via its environment, never in
+the indexed sha is unreachable). Private HTTP(S) repos: set `STRATA_GIT_TOKEN` (and optionally
+`STRATA_GIT_USER`, default `x-access-token`); the credential is passed to git via its environment, never in
 argv, URLs or logs.
 
 **Changelog.** 1.2.0 added `start_ingest_repo`, `get_ingest_job`, `check_repo_changes`, `GET /api/ingest-jobs/{job_id}`,
 optional `ingest_repo.commit_sha`, and `notes`/`commit_sha` on `IngestRepoOutput` (additive). 1.1.0 added `find_symbols_in_file` (additive). 1.0.0 initial.
 
-Default HTTP port 8765 (`MCP_HTTP_PORT` or `code-kg mcp http --port N`), endpoint `/mcp`,
+Default HTTP port 8765 (`MCP_HTTP_PORT` or `strata mcp http --port N`), endpoint `/mcp`,
 plus `GET /api/repo-state?slug=` and `GET /api/ingest-jobs/{job_id}`.
 
 ## Known ambiguities
@@ -130,4 +130,4 @@ the CLI, `RENAMED_FROM` direction, embedding-dimension fallbacks, unlabelled id 
 - Migration data-fixes touch every `CodeNode` regardless of repo.
 - Vector indexes are created once; changing `EMBEDDING__MODEL` to a different dimension does
   not recreate them.
-- CodeKG's `docker-compose.yml` publishes Neo4j on 7474/7687 and MCP on 8765.
+- Strata's `docker-compose.yml` publishes Neo4j on 7474/7687 and MCP on 8765.

@@ -1,7 +1,7 @@
 services:
-  code-kg-mcp:
+  strata-mcp:
     build: .
-    image: code-kg:dev
+    image: strata:dev
     # All settings are read from .env — no hardcoded values here.
     environment:
       NEO4J__URI: ${NEO4J__URI}
@@ -46,7 +46,7 @@ services:
       # neo4j:
       #   condition: service_healthy
     networks:
-      - code-kg
+      - strata
 
   # Waits for the ollama service to be ready, then pulls the configured model — but only when
   # SUMMARY__MODEL is an Ollama model (``ollama/…`` or a bare name). A cloud model such as
@@ -73,7 +73,7 @@ services:
     depends_on:
       - ollama
     networks:
-      - code-kg
+      - strata
 
   ollama:
     image: ollama/ollama:latest
@@ -82,7 +82,7 @@ services:
     volumes:
       - ollama-data:/root/.ollama
     networks:
-      - code-kg
+      - strata
     environment:
       OLLAMA_KEEP_ALIVE: -1        # never unload
       OLLAMA_LOAD_TIMEOUT: 600s    # give slow CPU loads room
@@ -106,7 +106,7 @@ services:
   #     retries: 10
   #     start_period: 30s
   #   networks:
-  #     - code-kg
+  #     - strata
 
 volumes:
   hf-cache:
@@ -114,4 +114,4 @@ volumes:
   ollama-data:
 
 networks:
-  code-kg:
+  strata:

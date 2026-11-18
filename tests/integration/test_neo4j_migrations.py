@@ -5,13 +5,12 @@ Run with: pytest tests/integration/test_neo4j_migrations.py -v
 """
 
 import asyncio
-import os
 
 import pytest
 
-from code_kg.config import Settings
-from code_kg.graph.client import Neo4jClient
-from code_kg.graph.migrations import run_migrations
+from strata.config import Settings
+from strata.graph.client import Neo4jClient
+from strata.graph.migrations import run_migrations
 
 
 @pytest.fixture

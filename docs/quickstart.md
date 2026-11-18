@@ -1,6 +1,6 @@
 # Quick Start
 
-Get CodeKG running and make your first query in under 10 minutes.
+Get Strata running and make your first query in under 10 minutes.
 
 ---
 
@@ -20,18 +20,18 @@ Get CodeKG running and make your first query in under 10 minutes.
 ### 1. Clone and configure
 
 ```bash
-git clone https://github.com/your-org/code-kg.git && cd code-kg
+git clone https://github.com/your-org/strata.git && cd strata
 cp .env.example .env          # edit NEO4J__PASSWORD if desired
 ```
 
 ### 2. Mount your repository
 
 The container needs to see your source code. Add a volume mount for every repo
-you want to ingest in `docker-compose.yml` under the `code-kg-mcp` service:
+you want to ingest in `docker-compose.yml` under the `strata-mcp` service:
 
 ```yaml
 services:
-  code-kg-mcp:
+  strata-mcp:
     volumes:
       - ./workdir:/app/workdir
       - /absolute/path/to/your-repo:/mnt/your-repo   # ← add this
@@ -84,7 +84,7 @@ Then comment out the `ollama` and `ollama-init` services in `docker-compose.yml`
   # ollama:        # ← comment out
 ```
 
-And remove the `depends_on` entries for those two services from `code-kg-mcp`.
+And remove the `depends_on` entries for those two services from `strata-mcp`.
 Then rebuild:
 
 ```bash
@@ -106,7 +106,7 @@ This starts four services in order:
 1. **neo4j** — graph database on `:7474` / `:7687`
 2. **ollama** — LLM runtime on `:11434`
 3. **ollama-init** — pulls `$SUMMARY__MODEL` (exits when done)
-4. **code-kg-mcp** — MCP server on `:8765` (waits for ollama-init to finish)
+4. **strata-mcp** — MCP server on `:8765` (waits for ollama-init to finish)
 
 On first run, `ollama-init` downloads the model — this takes a few minutes.
 Subsequent starts are instant (model is cached in the `ollama-data` volume).
@@ -114,7 +114,7 @@ Subsequent starts are instant (model is cached in the `ollama-data` volume).
 ### 5. Bootstrap the schema
 
 ```bash
-docker compose exec code-kg-mcp code-kg bootstrap
+docker compose exec strata-mcp strata bootstrap
 ```
 
 ### 6. Ingest
@@ -122,8 +122,8 @@ docker compose exec code-kg-mcp code-kg bootstrap
 Use the `/mnt/<name>` path you configured in step 2:
 
 ```bash
-docker compose exec code-kg-mcp \
-  code-kg ingest /mnt/your-repo \
+docker compose exec strata-mcp \
+  strata ingest /mnt/your-repo \
   --pattern "**/*.ts,**/*.tsx,**/*.cs,**/*.java" \
   --repo your-repo
 ```
@@ -133,13 +133,13 @@ is what you'll pass to `enrich`, `test-map`, etc. later.
 
 **Excluding generated or build files**
 
-CodeKG automatically skips common build directories (`.angular`, `node_modules`,
+Strata automatically skips common build directories (`.angular`, `node_modules`,
 `dist`, `build`, `bin`, `obj`, `.next`, `__pycache__`, etc.). For anything else,
 use `--exclude` with comma-separated glob patterns:
 
 ```bash
-docker compose exec code-kg-mcp \
-  code-kg ingest /mnt/your-repo \
+docker compose exec strata-mcp \
+  strata ingest /mnt/your-repo \
   --pattern "**/*.ts,**/*.tsx,**/*.cs,**/*.java" \
   --exclude "**/generated/**,**/*.g.ts,**/*.designer.cs" \
   --repo your-repo
@@ -153,10 +153,10 @@ docker compose exec code-kg-mcp \
 
 ```bash
 # Enrich all repos
-docker compose exec code-kg-mcp code-kg enrich
+docker compose exec strata-mcp strata enrich
 
 # Or limit to a specific repo / batch size
-docker compose exec code-kg-mcp code-kg enrich --repo your-repo --limit 200
+docker compose exec strata-mcp strata enrich --repo your-repo --limit 200
 ```
 
 > **Tip:** The `--repo` flag is case-insensitive — `--repo myrepo`, `--repo MyRepo`,
@@ -172,12 +172,12 @@ downloaded once.
 
 ```bash
 # Infer TESTS edges (heuristic test-to-code mapping)
-docker compose exec code-kg-mcp \
-  code-kg test-map /mnt/your-repo --repo your-repo
+docker compose exec strata-mcp \
+  strata test-map /mnt/your-repo --repo your-repo
 
 # Ingest Markdown documentation
-docker compose exec code-kg-mcp \
-  code-kg ingest /mnt/your-repo --pattern "**/*.md" --repo your-repo
+docker compose exec strata-mcp \
+  strata ingest /mnt/your-repo --pattern "**/*.md" --repo your-repo
 ```
 
 ---
@@ -194,7 +194,7 @@ MATCH (c:Class {layer: 'service'}) RETURN c.name, c.summary LIMIT 20
 
 ```bash
 # 1. Install
-git clone https://github.com/your-org/code-kg.git && cd code-kg
+git clone https://github.com/your-org/strata.git && cd strata
 pip install -e .
 
 # 2. Configure (minimum required)
@@ -205,13 +205,13 @@ cp .env.example .env.local
 #   NEO4J__PASSWORD=your-password
 
 # 3. Bootstrap the schema
-code-kg bootstrap
+strata bootstrap
 
 # 4. Ingest (add --exclude to skip generated files)
-code-kg ingest /path/to/your/repo --pattern "**/*.ts,**/*.cs" --exclude "**/generated/**"
+strata ingest /path/to/your/repo --pattern "**/*.ts,**/*.cs" --exclude "**/generated/**"
 
 # 5. Enrich (generates summaries + embeddings)
-code-kg enrich --repo my-repo
+strata enrich --repo my-repo
 ```
 
 ---
@@ -222,27 +222,27 @@ code-kg enrich --repo my-repo
 
 ```bash
 # One-time setup
-docker compose exec code-kg-mcp code-kg bootstrap
+docker compose exec strata-mcp strata bootstrap
 
 # Ingest source code (repo must be volume-mounted — see Option A step 2)
 # Use --exclude to skip generated files and keep the graph lean
-docker compose exec code-kg-mcp \
-  code-kg ingest /mnt/my-service \
+docker compose exec strata-mcp \
+  strata ingest /mnt/my-service \
   --pattern "**/*.ts,**/*.tsx,**/*.cs,**/*.java" \
   --exclude "**/generated/**,**/*.g.ts,**/*.designer.cs" \
   --repo my-service
 
 # Infer test links (optional but recommended)
-docker compose exec code-kg-mcp \
-  code-kg test-map /mnt/my-service --repo my-service
+docker compose exec strata-mcp \
+  strata test-map /mnt/my-service --repo my-service
 
 # Ingest markdown docs (optional)
-docker compose exec code-kg-mcp \
-  code-kg ingest /mnt/my-service --pattern "**/*.md" --repo my-service
+docker compose exec strata-mcp \
+  strata ingest /mnt/my-service --pattern "**/*.md" --repo my-service
 
 # Enrich with LLM summaries + embeddings
-docker compose exec code-kg-mcp \
-  code-kg enrich --repo my-service --limit 500
+docker compose exec strata-mcp \
+  strata enrich --repo my-service --limit 500
 
 # MCP server is already running on :8765 — no extra step needed
 ```
@@ -251,25 +251,25 @@ docker compose exec code-kg-mcp \
 
 ```bash
 # One-time setup
-code-kg bootstrap
+strata bootstrap
 
 # Ingest source code
-code-kg ingest ~/projects/my-service \
+strata ingest ~/projects/my-service \
   --pattern "**/*.ts,**/*.tsx,**/*.cs,**/*.java" \
   --exclude "**/generated/**,**/*.g.ts,**/*.designer.cs" \
   --repo my-service
 
 # Infer test links (optional but recommended)
-code-kg test-map ~/projects/my-service --repo my-service
+strata test-map ~/projects/my-service --repo my-service
 
 # Ingest markdown docs (optional)
-code-kg ingest ~/projects/my-service --pattern "**/*.md" --repo my-service
+strata ingest ~/projects/my-service --pattern "**/*.md" --repo my-service
 
 # Enrich with LLM summaries + embeddings
-code-kg enrich --repo my-service --limit 500
+strata enrich --repo my-service --limit 500
 
 # Start the MCP server for AI tool use
-code-kg mcp http
+strata mcp http
 ```
 
 ---
@@ -310,7 +310,7 @@ LIMIT 50
 
 A high `NULL` count is normal for plain model/DTO classes and anonymous functions.
 If entire subsystems (e.g. all Angular components, all test classes) are unclassified,
-edit `src/code_kg/ingestion/layers.py` to add matching patterns and re-ingest.
+edit `src/strata/ingestion/layers.py` to add matching patterns and re-ingest.
 
 **Built-in layer names**
 
@@ -354,7 +354,7 @@ RETURN caller.name, labels(caller)
 |-----------|-------|
 | Connect Claude Code or Copilot | [MCP Setup Guide](mcp-setup.md) |
 | See all available MCP tools | [MCP Tools Reference](mcp-tools.md) |
-| Understand what CodeKG can do | [Features](features.md) |
+| Understand what Strata can do | [Features](features.md) |
 | Tune models, Neo4j, embeddings | [Configuration Reference](configuration.md) |
 | Know what's not supported yet | [Known Limitations](limitations.md) |
 | See real-world use cases | [Use Cases](use-cases.md) |
