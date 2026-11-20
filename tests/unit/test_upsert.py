@@ -153,3 +153,24 @@ class TestNormalizeNode:
         assert normalized.repo == "test"
         assert normalized.file_path == "src/test.ts"
         assert normalized.language == "typescript"
+
+
+def test_edge_endpoints_are_matched_by_label_so_the_id_index_is_used():
+    from strata.ingestion.upsert import _id_label
+
+    assert _id_label("function:logto:a/b.ts:f:1a2b") == ":Function"
+    assert _id_label("file:logto:a/b.ts") == ":File"
+    assert _id_label("module:logto:react") == ":Module"
+    assert _id_label("mystery:x") == ""  # unknown prefix falls back to an unlabeled match
+
+
+def test_ids_are_grouped_by_label_for_batched_matches():
+    from strata.ingestion.upsert import _ids_by_label
+
+    groups = _ids_by_label(["file:r:a.ts", "function:r:a.ts:f:1111", "file:r:b.ts", "odd:1"])
+
+    assert groups == {
+        ":File": ["file:r:a.ts", "file:r:b.ts"],
+        ":Function": ["function:r:a.ts:f:1111"],
+        "": ["odd:1"],
+    }

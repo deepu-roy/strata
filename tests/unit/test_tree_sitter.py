@@ -85,3 +85,51 @@ def test_parse_csharp_using():
     captures = run_query(code, "csharp")
     assert "using.def" in captures
     assert captures["using.def"][0]["namespace"] == "System.Collections"
+
+
+def _function_names(captures):
+    return [c["name"] for c in captures.get("function.def", [])]
+
+
+def test_arrow_function_is_named_by_its_binding_not_its_parameter():
+    code = b"""
+    export const loadUser = async (id) => { return id; };
+    const handlers = { onSave: (payload) => payload };
+    const Card = memo((props) => props.children);
+    items.map((item) => item);
+    """
+    names = _function_names(run_query(code, "typescript"))
+
+    assert {"loadUser", "onSave", "Card"} <= set(names)
+    assert "id" not in names and "payload" not in names and "item" not in names
+
+
+def test_tsx_files_are_parsed_with_the_jsx_grammar():
+    code = b"""
+    export const Greeting = ({ name }: Props) => <div className="x">{name}</div>;
+    function Other() { return <Greeting name="a" />; }
+    """
+    names = _function_names(run_query(code, "tsx"))
+
+    assert names == ["Greeting", "Other"]
+
+
+def test_describe_and_it_blocks_become_named_test_cases():
+    code = b"""
+    describe('uploadFile()', () => {
+      it('sends no ACL for a private object', async () => {
+        await uploadFile(input);
+      });
+      it.only('sends no ACL for a private object', () => {});
+      test(`handles ${thing}`, () => {});
+    });
+    helper('not a test', () => {});
+    """
+    names = _function_names(run_query(code, "typescript"))
+
+    assert names == [
+        "describe: uploadFile()",
+        "it: sends no ACL for a private object",
+        "it: sends no ACL for a private object #2",
+        "it: handles ${thing}",
+    ]

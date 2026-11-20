@@ -84,6 +84,8 @@ def load_language(language_name: str) -> TSLanguageParser | None:
     try:
         if language_name == "typescript":
             lang_capsule = language_typescript()
+        elif language_name == "tsx":
+            lang_capsule = language_tsx()  # JSX needs its own grammar; TS errors on <Tag/>
         elif language_name == "csharp":
             lang_capsule = cs_language()
         elif language_name == "java":
@@ -140,7 +142,7 @@ def run_query(
         return {}
 
     captures: dict[str, list] = {}
-    if language_name == "typescript":
+    if language_name in ("typescript", "tsx"):
         captures = _extract_typescript(file_bytes, tree.root_node)
     elif language_name == "csharp":
         captures = _extract_csharp(file_bytes, tree.root_node)
@@ -169,13 +171,18 @@ def _extract_typescript(file_bytes: bytes, root_node) -> dict[str, list]:
             elif node.type == "class_declaration":
                 _process_ts_class(node, file_bytes, captures)
 
-        # Function declarations
+        # Functions. Arrow and function expressions are named by what they are assigned to.
         if node.type in (
             "function_declaration",
             "arrow_function",
             "function_expression",
+            "generator_function_declaration",
         ):
             _process_ts_function(node, file_bytes, captures)
+
+        # describe/it/test blocks are the test cases of a spec file
+        if node.type == "call_expression":
+            _process_ts_test_block(node, file_bytes, captures)
 
         # Method definitions inside classes
         if node.type == "method_definition":
@@ -225,21 +232,69 @@ def _process_ts_class(node, file_bytes: bytes, captures: dict[str, list]):
         })
 
 
+_WRAPPER_CALLS = frozenset({"memo", "forwardRef", "observer", "React.memo", "React.forwardRef"})
+_TEST_BLOCKS = {"describe": "describe", "context": "describe", "suite": "describe",
+                "it": "it", "test": "it", "specify": "it"}
+_TEST_MODIFIERS = frozenset({"only", "skip", "todo", "concurrent", "each", "failing"})
+
+
+def _text(file_bytes: bytes, node) -> str:
+    return _extract_text(file_bytes, node.start_byte, node.end_byte)
+
+
+def _assigned_name(node, file_bytes: bytes) -> str | None:
+    """The name a function expression is bound to (``const foo = () => {}``), if any."""
+    parent = node.parent
+    # const Foo = memo(() => ...) / forwardRef(...) / observer(...)
+    if parent is not None and parent.type == "arguments":
+        call = parent.parent
+        callee = call.child_by_field_name("function") if call is not None else None
+        if callee is not None and _text(file_bytes, callee) in _WRAPPER_CALLS:
+            node, parent = call, call.parent
+    # unwrap `() => {} as Handler` / `satisfies` / parentheses
+    while parent is not None and parent.type in (
+        "parenthesized_expression", "as_expression", "satisfies_expression", "non_null_expression"
+    ):
+        node, parent = parent, parent.parent
+    if parent is None:
+        return None
+    if parent.type == "variable_declarator":
+        target = parent.child_by_field_name("name")
+        return _text(file_bytes, target) if target is not None and target.type == "identifier" else None
+    if parent.type in ("pair", "public_field_definition", "property_definition"):
+        target = parent.child_by_field_name("key") or parent.child_by_field_name("name")
+        if target is not None and target.type in ("property_identifier", "identifier"):
+            return _text(file_bytes, target)
+        return None
+    if parent.type == "assignment_expression":
+        target = parent.child_by_field_name("left")
+        if target is None:
+            return None
+        if target.type == "identifier":
+            return _text(file_bytes, target)
+        if target.type == "member_expression":
+            prop = target.child_by_field_name("property")
+            return _text(file_bytes, prop) if prop is not None else None
+    return None
+
+
 def _process_ts_function(node, file_bytes: bytes, captures: dict[str, list]):
-    """Process TypeScript function node."""
+    """Process a function node; anonymous callbacks are skipped (their calls belong to the parent)."""
     if "function.def" not in captures:
         captures["function.def"] = []
 
-    # Extract function name
     name = None
-    for child in node.children:
-        if child.type in ("identifier", "property_identifier"):
-            name = _extract_text(file_bytes, child.start_byte, child.end_byte)
-            break
+    if node.type in ("function_declaration", "generator_function_declaration"):
+        ident = node.child_by_field_name("name")
+        name = _text(file_bytes, ident) if ident is not None else None
+    else:
+        # A named function expression carries its own name; an arrow's identifier child is a
+        # *parameter* (``id => ...``), never a name, so arrows are named only by their binding.
+        ident = node.child_by_field_name("name") if node.type == "function_expression" else None
+        name = _text(file_bytes, ident) if ident is not None else _assigned_name(node, file_bytes)
 
     if name:
         text = _extract_text(file_bytes, node.start_byte, node.end_byte)
-        # Limit text to first line for readability
         first_line = text.split("\n")[0]
         captures["function.def"].append({
             "text": first_line,
@@ -247,6 +302,53 @@ def _process_ts_function(node, file_bytes: bytes, captures: dict[str, list]):
             "start": node.start_byte,
             "end": node.end_byte,
         })
+
+
+def _test_block_kind(callee, file_bytes: bytes) -> str | None:
+    """``describe``/``it`` for a test-framework call such as ``it.only(...)``, else None."""
+    if callee.type == "identifier":
+        return _TEST_BLOCKS.get(_text(file_bytes, callee))
+    if callee.type == "member_expression":
+        obj, prop = callee.child_by_field_name("object"), callee.child_by_field_name("property")
+        if obj is not None and prop is not None and _text(file_bytes, prop) in _TEST_MODIFIERS:
+            return _test_block_kind(obj, file_bytes)
+    return None
+
+
+def _process_ts_test_block(node, file_bytes: bytes, captures: dict[str, list]):
+    """Record ``describe('x', () => {...})`` / ``it('does y', async () => {...})`` as test nodes.
+
+    Test files are made of anonymous callbacks, so without this a spec file has no functions and
+    nothing can be linked to the code under test. The block's title becomes its name.
+    """
+    callee = node.child_by_field_name("function")
+    args = node.child_by_field_name("arguments")
+    if callee is None or args is None:
+        return
+    kind = _test_block_kind(callee, file_bytes)
+    if kind is None:
+        return
+    named = [c for c in args.children if c.is_named]
+    if len(named) < 2 or named[0].type not in ("string", "template_string"):
+        return
+    if named[-1].type not in ("arrow_function", "function_expression"):
+        return
+    title = " ".join(_text(file_bytes, named[0]).strip("`'\"").split())[:120]
+    if not title:
+        return
+    base = f"{kind}: {title}"
+    seen = captures.setdefault("_test_names", [])
+    name, n = base, 1
+    while name in seen:  # keep ids unique when a file repeats a title
+        n += 1
+        name = f"{base} #{n}"
+    seen.append(name)
+    captures.setdefault("function.def", []).append({
+        "text": _text(file_bytes, node).split("\n")[0],
+        "name": name,
+        "start": node.start_byte,
+        "end": node.end_byte,
+    })
 
 
 def _process_ts_method(node, file_bytes: bytes, captures: dict[str, list]):

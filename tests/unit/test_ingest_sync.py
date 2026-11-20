@@ -471,9 +471,26 @@ class TestJobs:
         kinds = [e for e in events if e[0] != "done"]
         assert kinds[0] == ("phase", "parsing") and ("total", 3) in kinds
         assert [e[1] for e in kinds if e[0] == "phase"] == \
-            ["parsing", "upserting", "cleanup"]
+            ["parsing", "upserting", "cleanup", "mapping_tests"]
         assert sum(n for k, n in events if k == "done") >= 3
         assert events.index(("total", 3)) < events.index(next(e for e in events if e[0] == "done"))
+
+    async def test_pipeline_maps_tests_and_survives_a_mapping_failure(
+        self, tmp_path, pipeline_mocks, monkeypatch
+    ):
+        (tmp_path / "m.py").write_text("def f():\n    return 1\n")
+        calls = []
+
+        async def boom(client, slug, **kw):
+            calls.append(slug)
+            raise RuntimeError("neo4j hiccup")
+
+        monkeypatch.setattr("strata.ingestion.tests_mapper.map_tests", boom)
+
+        result = await run_pipeline(MagicMock(), tmp_path, "s", ["**/*.py"], commit_sha="c")
+
+        assert calls == ["s"]
+        assert result.errors == []  # the index stands; test-map can be re-run on its own
 
     def test_registry_ttl_and_cap(self):
         reg = JobRegistry(ttl=0.0, max_jobs=2)

@@ -372,7 +372,7 @@ RETURN n.id AS id, n.name AS name, n.filePath AS filePath, labels(n) AS labels
 """
 
 LOAD_CALLS_FROM_TEST = """
-MATCH (test {id: $test_id})-[:CALLS]->(target:CodeNode {repo: $repo})
+MATCH (test:Function {id: $test_id})-[:CALLS]->(target:CodeNode {repo: $repo})
 WHERE target.deleted_at IS NULL
   AND NOT (
     toLower(target.filePath) CONTAINS 'test'

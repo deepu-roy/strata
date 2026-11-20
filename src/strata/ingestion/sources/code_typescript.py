@@ -47,6 +47,11 @@ def _parse_file_sync(repo_root: str, file_path: str, language: str) -> dict:
     return {"file_path": file_path, "code": code, "captures": captures, "error": None}
 
 
+def _grammar_for(file_path: str, default: str) -> str:
+    """JSX needs the TSX grammar; the plain TypeScript one reports errors on ``<Tag />``."""
+    return "tsx" if file_path.endswith((".tsx", ".jsx")) else default
+
+
 def _byte_offset_to_line(code: bytes | str, byte_offset: int) -> int:
     """Convert byte offset to line number (1-based)."""
     if isinstance(code, bytes):
@@ -110,7 +115,9 @@ class TypeScriptSource:
 
         with ProcessPoolExecutor(max_workers=max_workers) as executor:
             futures = [
-                loop.run_in_executor(executor, _parse_file_sync, repo_root, f, self._language)
+                loop.run_in_executor(
+                    executor, _parse_file_sync, repo_root, f, _grammar_for(f, self._language)
+                )
                 for f in files
                 if any(f.endswith(ext) for ext in self.supported_extensions)
             ]
