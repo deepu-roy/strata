@@ -33,6 +33,7 @@ from strata.ingestion.git import (
 from strata.ingestion.jobs import REGISTRY, IngestJob, IngestProgress
 from strata.ingestion.pipeline import (
     EXCLUDE_DIRS,
+    is_excluded,
     extract_files,
     pat_to_extensions,
     run_pipeline,
@@ -146,6 +147,7 @@ async def _run_ingest(
                         if any(f.endswith(ext) for pat in inp.patterns
                                for ext in pat_to_extensions(pat))
                         and not any(part in EXCLUDE_DIRS for part in Path(f).parts)
+                        and not is_excluded(f, inp.exclude_patterns)
                     ]
                     logger.info(
                         f"[{job_id}] Incremental: {len(explicit_files)} changed files "
@@ -186,6 +188,7 @@ async def _run_ingest(
             repo_path=repo_path,
             repo_slug=inp.repo_slug,
             patterns=inp.patterns,
+            exclude_patterns=inp.exclude_patterns,
             commit_sha=head_sha,
             explicit_files=explicit_files,
             changed_files=changed_files,

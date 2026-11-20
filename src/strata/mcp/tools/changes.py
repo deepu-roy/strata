@@ -15,7 +15,7 @@ from strata.ingestion.git import (
     is_ancestor,
     sync_repo,
 )
-from strata.ingestion.pipeline import EXCLUDE_DIRS, pat_to_extensions
+from strata.ingestion.pipeline import EXCLUDE_DIRS, is_excluded, pat_to_extensions
 from strata.mcp.tools.write import _is_local_path
 
 logger = logging.getLogger(__name__)
@@ -23,9 +23,11 @@ logger = logging.getLogger(__name__)
 MAX_FILES = 200
 
 
-def _relevant(path: str, exts: set[str]) -> bool:
-    return path.endswith(tuple(exts)) and not any(
-        part in EXCLUDE_DIRS for part in Path(path).parts
+def _relevant(path: str, exts: set[str], exclude: list[str] | None = None) -> bool:
+    return (
+        path.endswith(tuple(exts))
+        and not any(part in EXCLUDE_DIRS for part in Path(path).parts)
+        and not is_excluded(path, exclude)
     )
 
 
@@ -70,10 +72,10 @@ async def check_repo_changes(
 
     exts = {e for pat in inp.patterns for e in pat_to_extensions(pat)}
     diff = await asyncio.to_thread(get_diff, repo_path, indexed, head)
-    added = [f for f in diff.added if _relevant(f, exts)]
-    modified = [f for f in diff.modified if _relevant(f, exts)]
-    deleted = [f for f in diff.deleted if _relevant(f, exts)]
-    renamed = [(o, n) for o, n in diff.renamed if _relevant(n, exts)]
+    added = [f for f in diff.added if _relevant(f, exts, inp.exclude_patterns)]
+    modified = [f for f in diff.modified if _relevant(f, exts, inp.exclude_patterns)]
+    deleted = [f for f in diff.deleted if _relevant(f, exts, inp.exclude_patterns)]
+    renamed = [(o, n) for o, n in diff.renamed if _relevant(n, exts, inp.exclude_patterns)]
 
     files = (
         [ChangedFile(path=p, status="added") for p in added]

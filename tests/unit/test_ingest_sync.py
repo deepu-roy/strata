@@ -602,3 +602,31 @@ class TestCheckRepoChanges:
             await check_repo_changes(MagicMock(), settings, _chk(up.url))
         clone = Path(settings.workdir) / clone_dir_name(up.url)
         assert git(clone, "rev-parse", "HEAD") == base
+
+
+class TestExcludePatterns:
+    def test_is_excluded_matches_paths_and_base_names(self):
+        from strata.ingestion.pipeline import is_excluded
+
+        pats = ["**/generated/**", "*.min.js", "docs/*"]
+        assert is_excluded("src/generated/a.ts", pats)
+        assert is_excluded("web/app.min.js", pats)
+        assert is_excluded("docs/guide.js", pats)
+        assert not is_excluded("src/app.ts", pats)
+        assert not is_excluded("src/app.ts", None)
+
+    def test_collect_files_applies_excludes_to_walks_and_explicit_lists(self, tmp_path):
+        from strata.ingestion.pipeline import collect_files
+
+        for name in ("a.ts", "gen/b.ts", "c.min.ts"):
+            f = tmp_path / name
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_text("export const x = 1\n")
+
+        walked = collect_files(tmp_path, ["**/*.ts"], exclude_patterns=["gen/*", "*.min.ts"])
+        explicit = collect_files(
+            tmp_path, ["**/*.ts"], explicit_files=["a.ts", "gen/b.ts"], exclude_patterns=["gen/*"]
+        )
+
+        assert walked == ["a.ts"]
+        assert explicit == ["a.ts"]

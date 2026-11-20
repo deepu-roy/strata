@@ -219,6 +219,10 @@ class IngestRepoInput(BaseModel):
         default=["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "**/*.cs", "**/*.md"],
         description="File glob patterns to ingest.",
     )
+    exclude_patterns: list[str] = Field(
+        default_factory=list,
+        description="Glob patterns of files to leave out (e.g. generated code, vendored copies).",
+    )
 
 
 class IngestRepoOutput(BaseModel):
@@ -285,6 +289,9 @@ class CheckRepoChangesInput(BaseModel):
     patterns: list[str] = Field(
         default=["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "**/*.cs", "**/*.md"],
         description="File glob patterns considered relevant.",
+    )
+    exclude_patterns: list[str] = Field(
+        default_factory=list, description="Glob patterns of files to leave out."
     )
 
 
