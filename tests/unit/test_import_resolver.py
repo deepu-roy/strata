@@ -31,6 +31,7 @@ def repo(tmp_path: Path) -> Path:
         "packages/app/src/main.ts", "packages/app/src/util.ts", "packages/app/src/comp/index.tsx",
         "packages/app/src/deep/thing.ts", "packages/app/src/internal.ts",
         "packages/lib/src/index.ts", "packages/lib/src/sub/x.ts",
+        "packages/app/src/types/context.d.ts", "packages/app/src/types/pkg/index.d.ts",
     ):
         _write(tmp_path, f)
     return tmp_path
@@ -48,6 +49,8 @@ FROM = "packages/app/src/main.ts"
     ("#src/internal.js", "packages/app/src/internal.ts"),
     ("@org/lib", "packages/lib/src/index.ts"),
     ("@org/lib/sub/x", "packages/lib/src/sub/x.ts"),
+    ("./types/context", "packages/app/src/types/context.d.ts"),
+    ("./types/pkg", "packages/app/src/types/pkg/index.d.ts"),
     ("react", None),
     ("./missing", None),
     ("./style.module.scss", None),
