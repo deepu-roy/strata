@@ -85,6 +85,8 @@ class ImportResolver:
         tries += [stem + e for e in _JS_TO_TS.get(ext, ())]
         tries += [base + e for e in _EXTS]
         tries += [posixpath.join(base, "index" + e) for e in _EXTS]
+        # A type-only import (``./types/context``) points at a declaration file.
+        tries += [base + ".d.ts", posixpath.join(base, "index.d.ts")]
         return next((t for t in tries if is_code_file(t) and self._exists(t)), None)
 
     # ── configuration ────────────────────────────────────────────────────────
