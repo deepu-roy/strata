@@ -75,6 +75,34 @@ _LABEL_MAP = {
 _DOC_LABELS = {"Document", "Section"}
 
 
+# Node id prefix -> label, so edge endpoints are matched through the id index.
+_ID_PREFIX_LABEL = {
+    "file": "File",
+    "class": "Class",
+    "interface": "Interface",
+    "function": "Function",
+    "method": "Method",
+    "module": "Module",
+    "repo": "Repo",
+    "document": "Document",
+    "section": "Section",
+}
+
+
+def _id_label(node_id: str) -> str:
+    """The ``:Label`` clause for a node id (``function:r:p:f:1a2b`` -> ``:Function``), else empty."""
+    label = _ID_PREFIX_LABEL.get(node_id.split(":", 1)[0])
+    return f":{label}" if label else ""
+
+
+def _ids_by_label(node_ids: list[str]) -> dict[str, list[str]]:
+    """Group node ids by their ``:Label`` clause so each group can be matched through its index."""
+    groups: dict[str, list[str]] = {}
+    for node_id in node_ids:
+        groups.setdefault(_id_label(node_id), []).append(node_id)
+    return groups
+
+
 def normalize_node(node: RawNode, repo_slug: str | None = None) -> NormalizedNode | None:
     """Convert a RawNode to a NormalizedNode with stable IDs.
 
@@ -211,11 +239,11 @@ async def _upsert_layer_edge(client: Neo4jClient, node: NormalizedNode) -> None:
         node: Node with a layer value.
     """
     layer_id = f"layer:{node.repo}:{node.layer}"
-    query = """
-    MERGE (l:Layer {id: $layer_id})
+    query = f"""
+    MERGE (l:Layer {{id: $layer_id}})
     ON CREATE SET l.name = $layer_name, l.repo = $repo, l.created_at = datetime()
     WITH l
-    MATCH (n {id: $node_id})
+    MATCH (n{_id_label(node.id)} {{id: $node_id}})
     MERGE (n)-[:BELONGS_TO_LAYER]->(l)
     """
     try:
@@ -237,11 +265,11 @@ async def _upsert_repo_edge(client: Neo4jClient, node: NormalizedNode) -> None:
         node: Node to link to its repo.
     """
     repo_id = make_repo_id(node.repo)
-    query = """
-    MERGE (r:Repo {id: $repo_id})
+    query = f"""
+    MERGE (r:Repo {{id: $repo_id}})
     ON CREATE SET r.name = $repo_name, r.created_at = datetime()
     WITH r
-    MATCH (n {id: $node_id})
+    MATCH (n{_id_label(node.id)} {{id: $node_id}})
     MERGE (n)-[:IN_REPO]->(r)
     """
     try:
@@ -271,10 +299,12 @@ async def _upsert_edges_unwind(
     """
     from collections import defaultdict
 
-    by_type: dict[str, list[dict]] = defaultdict(list)
+    # Group by (relationship, endpoint labels). A label-less ``MATCH (a {id: ...})`` cannot use an
+    # index and scans every node for each row, which made large repositories take hours.
+    by_type: dict[tuple[str, str, str], list[dict]] = defaultdict(list)
     for edge, from_id, to_id in edges:
         rel_type = edge.type or "REFERENCES"
-        by_type[rel_type].append({
+        by_type[(rel_type, _id_label(from_id), _id_label(to_id))].append({
             "from_id": from_id,
             "to_id": to_id,
             "weight": edge.weight,
@@ -283,11 +313,11 @@ async def _upsert_edges_unwind(
 
     total_written = 0
 
-    for rel_type, rows in by_type.items():
+    for (rel_type, from_label, to_label), rows in by_type.items():
         query = f"""
         UNWIND $batch AS row
-        MATCH (a {{id: row.from_id}})
-        MATCH (b {{id: row.to_id}})
+        MATCH (a{from_label} {{id: row.from_id}})
+        MATCH (b{to_label} {{id: row.to_id}})
         MERGE (a)-[r:{rel_type}]->(b)
         ON CREATE SET r.weight = row.weight, r.unresolved = row.unresolved, r.created_at = datetime()
         ON MATCH SET r.updated_at = datetime()
@@ -325,8 +355,8 @@ async def upsert_edge(
         # Use separate MATCH clauses (not comma-separated) to avoid Cartesian product
         # and to let Neo4j use the indexed id lookups.
         query = f"""
-        MATCH (from) WHERE from.id = $from_id
-        MATCH (to)   WHERE to.id   = $to_id
+        MATCH (from{_id_label(from_id)}) WHERE from.id = $from_id
+        MATCH (to{_id_label(to_id)})   WHERE to.id   = $to_id
         MERGE (from)-[r:{rel_type}]->(to)
         ON CREATE SET
             r.weight     = $weight,
@@ -439,19 +469,19 @@ async def _upsert_repo_edges_unwind(
         {"id": repo_id, "name": repo},
     )
 
-    query = """
-    UNWIND $node_ids AS nid
-    MATCH (n {id: nid})
-    MATCH (r:Repo {id: $repo_id})
-    MERGE (n)-[:IN_REPO]->(r)
-    """
-    node_ids = [n.id for n in nodes]
-    for i in range(0, len(node_ids), batch_size):
-        chunk = node_ids[i : i + batch_size]
-        try:
-            await client.execute_query(query, {"node_ids": chunk, "repo_id": repo_id})
-        except Exception as e:
-            logger.warning(f"IN_REPO batch failed: {e}")
+    for label, node_ids in _ids_by_label([n.id for n in nodes]).items():
+        query = f"""
+        UNWIND $node_ids AS nid
+        MATCH (n{label} {{id: nid}})
+        MATCH (r:Repo {{id: $repo_id}})
+        MERGE (n)-[:IN_REPO]->(r)
+        """
+        for i in range(0, len(node_ids), batch_size):
+            chunk = node_ids[i : i + batch_size]
+            try:
+                await client.execute_query(query, {"node_ids": chunk, "repo_id": repo_id})
+            except Exception as e:
+                logger.warning(f"IN_REPO batch failed: {e}")
 
 
 async def _upsert_layer_edges_unwind(
@@ -477,18 +507,19 @@ async def _upsert_layer_edges_unwind(
             {"layer_id": layer_id, "name": layer_name, "repo": repo},
         )
 
-        query = """
-        UNWIND $node_ids AS nid
-        MATCH (n {id: nid})
-        MATCH (l:Layer {id: $layer_id})
-        MERGE (n)-[:BELONGS_TO_LAYER]->(l)
-        """
-        for i in range(0, len(node_ids), batch_size):
-            chunk = node_ids[i : i + batch_size]
-            try:
-                await client.execute_query(query, {"node_ids": chunk, "layer_id": layer_id})
-            except Exception as e:
-                logger.warning(f"BELONGS_TO_LAYER batch failed for layer {layer_name}: {e}")
+        for label, label_ids in _ids_by_label(node_ids).items():
+            query = f"""
+            UNWIND $node_ids AS nid
+            MATCH (n{label} {{id: nid}})
+            MATCH (l:Layer {{id: $layer_id}})
+            MERGE (n)-[:BELONGS_TO_LAYER]->(l)
+            """
+            for i in range(0, len(label_ids), batch_size):
+                chunk = label_ids[i : i + batch_size]
+                try:
+                    await client.execute_query(query, {"node_ids": chunk, "layer_id": layer_id})
+                except Exception as e:
+                    logger.warning(f"BELONGS_TO_LAYER batch failed for layer {layer_name}: {e}")
 
 
 async def upsert_nodes_batch(

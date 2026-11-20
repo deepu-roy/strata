@@ -8,6 +8,8 @@ from strata.ingestion.tests_mapper import (
     _base_name_from_path,
     _is_test_path,
     _mirror_path,
+    _one_per_file,
+    _strategy_calls,
     _strategy_filename,
     _strategy_path_mirror,
     _strip_test_suffix,
@@ -195,3 +197,69 @@ class TestMapTests:
         assert len(pairs) == 1
         weights = [w for _, _, w in emitted]
         assert max(weights) == pytest.approx(0.9)
+
+
+class TestStrictTestPaths:
+    def test_names_and_directories_that_are_tests(self):
+        for path in (
+            "packages/core/src/routes/one-time-tokens.test.ts",
+            "src/Button.spec.tsx",
+            "pkg/integration-tests/src/tests/api/x.ts",
+            "svc/test_orders.py",
+            "svc/orders_test.go",
+            "src/__tests__/x.ts",
+            "App.Tests/CandidateServiceTests.cs",
+        ):
+            assert _is_test_path(path) is True, path
+
+    def test_production_files_with_test_in_the_name_are_not_tests(self):
+        for path in (
+            "packages/core/src/routes/connector/config-testing.ts",
+            "src/utils/latest.ts",
+            "src/contest/index.ts",
+            "src/attestation.py",
+        ):
+            assert _is_test_path(path) is False, path
+
+
+class TestFanOutGuards:
+    def test_name_shared_by_many_files_is_ambiguous_and_skipped(self):
+        tests = [{"id": "t", "filePath": "pkg/a/index.test.ts"}]
+        prods = [{"id": f"p{i}", "filePath": f"pkg/m{i}/index.ts"} for i in range(5)]
+
+        assert _strategy_filename(tests, prods) == {}
+
+    def test_same_directory_candidate_wins_over_ambiguity(self):
+        tests = [{"id": "t", "filePath": "pkg/a/index.test.ts"}]
+        prods = [{"id": f"p{i}", "filePath": f"pkg/m{i}/index.ts"} for i in range(5)]
+        prods.append({"id": "near", "filePath": "pkg/a/index.ts"})
+
+        assert set(_strategy_filename(tests, prods)) == {("t", "near")}
+
+    def test_one_representative_test_per_file_prefers_describe(self):
+        nodes = [
+            {"id": "b", "name": "it: works", "filePath": "x.test.ts"},
+            {"id": "a", "name": "describe: x", "filePath": "x.test.ts"},
+            {"id": "c", "name": "it: other", "filePath": "y.test.ts"},
+        ]
+
+        assert [n["id"] for n in _one_per_file(nodes)] == ["a", "c"]
+
+    async def test_shared_helper_called_from_many_spec_files_is_not_linked(self):
+        tests = [
+            {"id": f"t{i}", "name": "it: x", "filePath": f"pkg/s{i}.test.ts", "labels": ["Function"]}
+            for i in range(25)
+        ]
+        helper = {"id": "helper", "name": "koaGuard", "filePath": "pkg/guard.ts"}
+        unit = {"id": "unit", "name": "run", "filePath": "pkg/run.ts"}
+        client = MagicMock()
+
+        async def calls(query, params):
+            return [helper, unit] if params["test_id"] == "t0" else [helper]
+
+        client.execute_query = AsyncMock(side_effect=calls)
+
+        result = await _strategy_calls(client, tests, "repo")
+
+        assert ("t0", "unit") in result
+        assert not any(target == "helper" for _, target in result)

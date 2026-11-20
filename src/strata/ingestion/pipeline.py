@@ -290,12 +290,31 @@ async def run_pipeline(
                 )
                 result.nodes_removed = removed
 
+        await _map_tests(client, repo_slug, progress)
+
     except Exception as e:
         logger.error(f"Pipeline error for repo={repo_slug}: {e}", exc_info=True)
         result.errors.append(str(e))
 
     result.duration_seconds = round(time.monotonic() - t0, 2)
     return result
+
+
+async def _map_tests(client: Neo4jClient, repo_slug: str, progress) -> None:
+    """Infer TESTS edges once the code graph is complete, so every consumer gets them.
+
+    Best effort: a mapping failure is logged and leaves the index itself intact (``strata
+    test-map`` can be re-run on its own).
+    """
+    from strata.ingestion.tests_mapper import map_tests
+
+    if progress is not None:
+        progress.set_phase("mapping_tests")
+    try:
+        mapped = await map_tests(client, repo_slug)
+        logger.info(f"Mapped {mapped.edges_written} TESTS edges for repo={repo_slug}")
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"test mapping skipped for repo={repo_slug}: {e}")
 
 
 def to_ingest_output(

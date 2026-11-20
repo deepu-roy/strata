@@ -30,17 +30,48 @@ from strata.ingestion.upsert import upsert_edge
 
 logger = logging.getLogger(__name__)
 
-# Filename patterns that indicate a test file
-_TEST_PATH_RE = re.compile(
-    r"(test|spec|tests|__tests__|Test|Tests|Spec)",
-    re.IGNORECASE,
+# A test file is named like one (``x.test.ts``, ``x_test.py``, ``test_x.py``, ``XTests.cs``) or sits
+# in a test directory (``tests/``, ``__tests__/``, ``integration-tests/``). Matching "test" anywhere
+# in the path would also catch ``config-testing.ts`` or ``latest.ts``.
+_TEST_FILE_RE = re.compile(
+    r"(\.(test|spec)\.[A-Za-z]+$|[_-](test|tests|spec)\.[A-Za-z]+$|^test_[^/]*\.py$"
+    r"|(Tests?|Spec)\.(cs|java|kt|scala)$)"
 )
+_TEST_DIR_RE = re.compile(r"(^|[-_.])(tests?|specs?)$|^__tests__$", re.IGNORECASE)
 
 # Suffixes/infixes stripped to get the base production name
 _TEST_SUFFIXES = (
-    "Tests", "Test", "Spec", ".spec", ".test",
-    "_test", "_tests", "_spec",
+    "Tests",
+    "Test",
+    "Spec",
+    ".spec",
+    ".test",
+    "_test",
+    "_tests",
+    "_spec",
 )
+
+
+# A name shared by more files than this (``index.ts``) is too ambiguous to pair by name alone.
+_MAX_AMBIGUOUS_FILES = 3
+# A function called from more spec files than this is a shared helper, not the unit under test.
+_MAX_SPEC_FILES_PER_TARGET = 20
+
+
+def _one_per_file(test_nodes: list[dict]) -> list[dict]:
+    """One representative test node per spec file.
+
+    The name and path strategies relate *files*; running them per ``it(...)`` block would repeat
+    the same pairing for every test in the file (30 tests x 30 functions = 900 edges per file).
+    Prefer the file's top-level ``describe`` block.
+    """
+    chosen: dict[str, dict] = {}
+    for node in sorted(
+        test_nodes,
+        key=lambda n: (not str(n.get("name", "")).startswith("describe"), n["id"]),
+    ):
+        chosen.setdefault(node.get("filePath", ""), node)
+    return list(chosen.values())
 
 
 @dataclass
@@ -61,7 +92,10 @@ class TestsMapperResult:
 
 def _is_test_path(file_path: str) -> bool:
     """Return True if *file_path* looks like a test file."""
-    return bool(_TEST_PATH_RE.search(file_path))
+    parts = Path(file_path).as_posix().split("/")
+    if _TEST_FILE_RE.search(parts[-1]):
+        return True
+    return any(_TEST_DIR_RE.search(segment) for segment in parts[:-1])
 
 
 def _strip_test_suffix(name: str) -> str:
@@ -97,7 +131,8 @@ def _mirror_path(test_path: str) -> str | None:
     """
     parts = Path(test_path).parts
     test_dir_indices = [
-        i for i, p in enumerate(parts)
+        i
+        for i, p in enumerate(parts)
         if p.lower() in ("test", "tests", "spec", "specs", "__tests__")
     ]
     if not test_dir_indices:
@@ -129,18 +164,32 @@ async def _strategy_calls(
     Returns a ``{(from_id, to_id): weight}`` mapping.
     """
     results: dict[tuple[str, str], float] = {}
+    spec_files_by_target: dict[str, set[str]] = {}
     for test in test_nodes:
         try:
+            label = "Method" if "Method" in (test.get("labels") or []) else "Function"
             rows = await client.execute_query(
-                Q.LOAD_CALLS_FROM_TEST,
+                Q.LOAD_CALLS_FROM_TEST.replace("(test:Function ", f"(test:{label} ", 1),
                 {"test_id": test["id"], "repo": repo_slug},
             )
             for row in rows:
+                if _is_test_path(row.get("filePath") or ""):
+                    continue  # the loose query also drops "latest.ts"-style files; be exact here
                 key = (test["id"], row["id"])
                 results[key] = max(results.get(key, 0.0), 0.9)
+                spec_files_by_target.setdefault(row["id"], set()).add(
+                    test.get("filePath", "")
+                )
         except Exception as e:
             logger.debug(f"_strategy_calls failed for {test['id']}: {e}")
-    return results
+    # A function called from many spec files (a logger, a request guard, a fixture builder) is a
+    # helper the tests *use*, not what they test; linking it to all of them is noise.
+    helpers = {
+        t
+        for t, files in spec_files_by_target.items()
+        if len(files) > _MAX_SPEC_FILES_PER_TARGET
+    }
+    return {k: w for k, w in results.items() if k[1] not in helpers}
 
 
 def _strategy_filename(
@@ -152,18 +201,27 @@ def _strategy_filename(
     Strips test suffix from test-file stem and looks for production nodes
     whose file stem matches.  Returns ``{(test_id, prod_id): weight}``.
     """
-    # Build lookup: base_name → [prod_node_ids]
-    prod_by_base: dict[str, list[str]] = {}
+    # Build lookup: base_name → {file_path: [prod_node_ids]}
+    prod_by_base: dict[str, dict[str, list[str]]] = {}
     for prod in prod_nodes:
-        base = _base_name_from_path(prod["filePath"])
-        prod_by_base.setdefault(base.lower(), []).append(prod["id"])
+        base = _base_name_from_path(prod["filePath"]).lower()
+        prod_by_base.setdefault(base, {}).setdefault(prod["filePath"], []).append(
+            prod["id"]
+        )
 
     results: dict[tuple[str, str], float] = {}
     for test in test_nodes:
         base = _base_name_from_path(test["filePath"]).lower()
-        for prod_id in prod_by_base.get(base, []):
-            key = (test["id"], prod_id)
-            results[key] = max(results.get(key, 0.0), 0.7)
+        files = prod_by_base.get(base, {})
+        # A name such as ``index`` or ``utils`` exists all over a repo; unless a candidate sits in
+        # the test's own directory, an ambiguous name says nothing about what is under test.
+        here = Path(test["filePath"]).parent.as_posix()
+        near = {f: ids for f, ids in files.items() if Path(f).parent.as_posix() == here}
+        chosen = near or (files if len(files) <= _MAX_AMBIGUOUS_FILES else {})
+        for ids in chosen.values():
+            for prod_id in ids:
+                key = (test["id"], prod_id)
+                results[key] = max(results.get(key, 0.0), 0.7)
     return results
 
 
@@ -212,9 +270,7 @@ async def map_tests(
 
     # ── Load test and production nodes ────────────────────────────────────────
     try:
-        test_nodes = await client.execute_query(
-            Q.LOAD_TEST_NODES, {"repo": repo_slug}
-        )
+        test_nodes = await client.execute_query(Q.LOAD_TEST_NODES, {"repo": repo_slug})
     except Exception as e:
         result.errors.append(f"Failed to load test nodes: {e}")
         return result
@@ -231,9 +287,13 @@ async def map_tests(
         result.errors.append(f"Failed to load production nodes: {e}")
         return result
 
-    prod_nodes = [
-        n for n in all_nodes if not _is_test_path(n.get("filePath", ""))
-    ]
+    # The loader's SQL-style match is loose ("testing", "latest"); keep only real test files.
+    test_nodes = [n for n in test_nodes if _is_test_path(n.get("filePath", ""))]
+    if not test_nodes:
+        logger.info(f"No test nodes found for repo={repo_slug}")
+        return result
+
+    prod_nodes = [n for n in all_nodes if not _is_test_path(n.get("filePath", ""))]
 
     # Build path → [node_id] index for path-mirroring strategy
     prod_by_path: dict[str, list[str]] = {}
@@ -252,8 +312,9 @@ async def map_tests(
         logger.warning(f"Strategy calls failed: {e}")
         calls_edges = {}
 
-    fn_edges = _strategy_filename(test_nodes, prod_nodes)
-    pm_edges = _strategy_path_mirror(test_nodes, prod_by_path)
+    per_file = _one_per_file(test_nodes)
+    fn_edges = _strategy_filename(per_file, prod_nodes)
+    pm_edges = _strategy_path_mirror(per_file, prod_by_path)
 
     # Merge: keep the highest weight from any strategy
     all_candidates: dict[tuple[str, str], float] = {}
