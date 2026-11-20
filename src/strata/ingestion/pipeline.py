@@ -264,6 +264,8 @@ async def run_pipeline(
             client, all_nodes, all_edges, repo_slug,
             changed_files=changed_files,
             seen_commit=commit_sha,
+            repo_path=repo_path,
+            replace_edges=explicit_files is None or bool(changed_files),
         )
         result.nodes_added = nodes_upserted
         result.edges_added = edges_upserted

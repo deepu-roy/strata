@@ -92,7 +92,8 @@ def pipeline_mocks():
     """Mock the Neo4j-touching pipeline steps; record what was upserted."""
     rec = {"upserts": [], "meta": []}
 
-    async def fake_upsert(client, nodes, edges, repo, changed_files=None, seen_commit=None):
+    async def fake_upsert(client, nodes, edges, repo, changed_files=None, seen_commit=None,
+                          repo_path=None, replace_edges=False):
         rec["upserts"].append(
             {"files": {n.file_path for n in nodes}, "changed_files": changed_files}
         )

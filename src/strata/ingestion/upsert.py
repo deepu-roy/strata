@@ -55,6 +55,7 @@ from strata.domain.ids import (
 )
 from strata.domain.models import NormalizedEdge, NormalizedNode, RawEdge, RawNode
 from strata.graph.client import Neo4jClient
+from strata.ingestion.import_resolver import ImportResolver
 from strata.ingestion.layers import assign_layer
 
 logger = logging.getLogger(__name__)
@@ -543,10 +544,21 @@ async def upsert_nodes_batch(
     return success_count
 
 
+def _imported_files(imports: dict[str, set[str]], from_file: str) -> set[str]:
+    """Files ``from_file`` imports, looking through barrel ``index`` files one level."""
+    direct = imports.get(from_file, set())
+    allowed = set(direct)
+    for target in direct:
+        if Path(target).stem == "index":
+            allowed |= imports.get(target, set())
+    return allowed
+
+
 def _resolve_calls_edges(
     raw_edges: list[RawEdge],
     repo_slug: str,
     normalized_nodes: list[NormalizedNode],
+    imports: dict[str, set[str]] | None = None,
 ) -> list[tuple[NormalizedEdge, str, str]]:
     """Resolve CALLS edges using the symbol registry built from normalized nodes.
 
@@ -559,8 +571,9 @@ def _resolve_calls_edges(
     1. Resolve ``from_id``: exact match on (file_path, method_name).
     2. Resolve ``to_id``:
        a. Same-file match (file_path, call_name) — highest confidence.
-       b. Cross-file match by name only — emit one edge per candidate,
-          marked ``unresolved=True`` so the edge is queryable but flagged.
+       b. Cross-file match by name. When the caller's file imports some of the files that
+          define the name, only those candidates are kept and the edge is marked resolved;
+          otherwise one edge per candidate, marked ``unresolved=True``.
     3. Skip edges where the caller cannot be resolved (external / parse artefacts).
 
     Args:
@@ -576,12 +589,14 @@ def _resolve_calls_edges(
     file_name_to_id: dict[tuple[str, str], str] = {}
     # name → [node_ids]              for cross-file fallback
     name_to_ids: dict[str, list[str]] = {}
+    id_to_file: dict[str, str] = {}
 
     for node in normalized_nodes:
         if node.type in ("function", "method") and node.file_path and node.name:
             key = (node.file_path, node.name)
             file_name_to_id[key] = node.id
             name_to_ids.setdefault(node.name, []).append(node.id)
+            id_to_file[node.id] = node.file_path
 
     resolved: list[tuple[NormalizedEdge, str, str]] = []
     seen: set[tuple[str, str]] = set()  # deduplicate (from_id, to_id) pairs
@@ -609,6 +624,11 @@ def _resolve_calls_edges(
         else:
             cross_file = name_to_ids.get(call_name, [])
             candidates = [(nid, True) for nid in cross_file]  # unresolved=True
+            if imports and len(cross_file) > 1:
+                allowed = _imported_files(imports, from_file)
+                imported = [n for n in cross_file if id_to_file.get(n) in allowed]
+                if imported:  # the caller imports the file that defines it
+                    candidates = [(nid, False) for nid in imported]
 
         for to_id, unresolved in candidates:
             pair = (from_id, to_id)
@@ -712,22 +732,26 @@ def _resolve_import_edges(
     raw_edges: list[RawEdge],
     repo_slug: str,
     file_id_map: dict[str, str],
+    resolver: ImportResolver | None = None,
 ) -> list[tuple[NormalizedEdge, str, str]]:
     """Resolve IMPORTS edges to (NormalizedEdge, from_id, to_id) triples.
 
     Resolution strategy:
-    - Relative paths (./foo, ../bar) → match against known file IDs.
+    - Specifiers that name a file in the repository (relative, tsconfig paths, ``#src/*``,
+      workspace packages) → that File node; with no ``resolver`` only relative paths are tried.
     - External packages / namespaces  → Module placeholder node.
 
     Args:
         raw_edges: All raw edges from extraction sources.
         repo_slug: Repository slug.
         file_id_map: Maps relative file path → stable file ID.
+        resolver: Resolves specifiers against the checkout; built from ``file_id_map`` if omitted.
 
     Returns:
         List of (edge, from_id, to_id) ready for upsert.
     """
     resolved: list[tuple[NormalizedEdge, str, str]] = []
+    resolver = resolver or ImportResolver(None, set(file_id_map))
 
     for edge in raw_edges:
         if edge.type != "IMPORTS":
@@ -745,17 +769,11 @@ def _resolve_import_edges(
         to_id: str | None = None
         unresolved = True
 
-        if import_path.startswith(("./", "../")):
-            # Resolve relative TS import against known files
-            src_file = from_id.replace(f"file:{repo_slug}:", "", 1)
-            src_dir = str(Path(src_file).parent)
-            raw_target = str(Path(src_dir) / import_path)
-            for ext in ("", ".ts", ".tsx", ".js", ".jsx", "/index.ts", "/index.js"):
-                candidate = str(Path(raw_target + ext))
-                if candidate in file_id_map:
-                    to_id = file_id_map[candidate]
-                    unresolved = False
-                    break
+        src_file = from_id.replace(f"file:{repo_slug}:", "", 1)
+        target = resolver.resolve(src_file, import_path)
+        if target is not None:
+            to_id = file_id_map.get(target) or f"file:{repo_slug}:{target}"
+            unresolved = False
 
         if to_id is None:
             to_id = f"module:{repo_slug}:{import_path}"
@@ -793,6 +811,38 @@ async def _upsert_module_node(
         logger.warning(f"Failed to upsert module node {module_id}: {e}")
 
 
+_DELETE_CHUNK = 20_000
+
+
+async def _clear_repo_edges(client: Neo4jClient, repo: str, rel_types: tuple[str, ...]) -> int:
+    """Delete a repo's outgoing edges of ``rel_types`` in chunks (one transaction would exhaust
+    Neo4j's memory on a large repo). Label-aware: a label-less match scans the whole graph."""
+    removed = 0
+    for rel in rel_types:
+        labels = ("File",) if rel == "IMPORTS" else ("Function", "Method")
+        for label in labels:
+            while True:
+                rows = await client.execute_query(
+                    f"MATCH (n:{label} {{repo: $repo}})-[r:{rel}]->() "
+                    f"WITH r LIMIT {_DELETE_CHUNK} DELETE r RETURN count(*) AS n",
+                    {"repo": repo},
+                )
+                n = int(rows[0]["n"]) if rows else 0
+                removed += n
+                if n < _DELETE_CHUNK:
+                    break
+    return removed
+
+
+async def _clear_file_imports(client: Neo4jClient, file_ids: list[str]) -> None:
+    """Drop the outgoing IMPORTS of these File nodes, so their new import set replaces the old."""
+    for i in range(0, len(file_ids), 500):
+        await client.execute_query(
+            "MATCH (f:File)-[r:IMPORTS]->() WHERE f.id IN $ids DELETE r",
+            {"ids": file_ids[i : i + 500]},
+        )
+
+
 async def normalize_and_upsert(
     client: Neo4jClient,
     raw_nodes: list[RawNode],
@@ -800,6 +850,8 @@ async def normalize_and_upsert(
     repo_slug: str | None = None,
     changed_files: set[str] | None = None,
     seen_commit: str | None = None,
+    repo_path: Path | None = None,
+    replace_edges: bool = False,
 ) -> tuple[int, int]:
     """Normalize and upsert a batch of raw nodes and edges.
 
@@ -815,6 +867,12 @@ async def normalize_and_upsert(
         raw_nodes: List of raw nodes to process.
         raw_edges: List of raw edges to process.
         repo_slug: Optional repository slug.
+        repo_path: Checkout directory. With it, imports resolve through tsconfig paths, package.json
+            ``imports`` and workspace packages, and to files outside this run (incremental).
+        replace_edges: This batch is the whole repo (a full index): first delete the repo's old
+            IMPORTS and CALLS edges so resolution changes take effect (edges are otherwise only
+            ever added). With ``changed_files``, the changed files' IMPORTS are replaced instead.
+            Never set it for a partial batch such as a single-file reindex.
         seen_commit: If given, stamp ``last_seen_commit`` on exactly the nodes upserted here.
             Stamping by node (not by file path) is what lets a symbol deleted from a file that
             still exists look orphaned on the next sweep.
@@ -845,9 +903,18 @@ async def normalize_and_upsert(
             {"ids": [n.id for n in normalized_nodes], "commit": seen_commit},
         )
 
+    # ── Replace stale edges so a better resolution is not shadowed by old ones ──
+    if replace_edges and not changed_files:
+        await _clear_repo_edges(client, repo_slug, ("IMPORTS", "CALLS"))
+    elif replace_edges and changed_files:
+        await _clear_file_imports(
+            client, [file_id_map[f] for f in changed_files if f in file_id_map]
+        )
+
     # ── Resolve IMPORTS edges (create Module placeholder nodes first) ─────────
     edges_upserted = 0
-    resolved_imports = _resolve_import_edges(raw_edges, repo_slug, file_id_map)
+    resolver = ImportResolver(repo_path, set(file_id_map)) if repo_path else None
+    resolved_imports = _resolve_import_edges(raw_edges, repo_slug, file_id_map, resolver)
 
     module_edges = [(e, f, t) for e, f, t in resolved_imports if t.startswith("module:")]
     for norm_edge, _, to_id in module_edges:
@@ -875,8 +942,13 @@ async def normalize_and_upsert(
     edges_upserted += await _upsert_edges_unwind(client, doc_edges)
 
     # ── Resolve and upsert CALLS edges ───────────────────────────────────────
+    file_prefix = f"file:{repo_slug}:"
+    imports_by_file: dict[str, set[str]] = {}
+    for _, f_id, t_id in resolved_imports:
+        if t_id.startswith(file_prefix):  # a File target, not a Module placeholder
+            imports_by_file.setdefault(f_id[len(file_prefix):], set()).add(t_id[len(file_prefix):])
     resolved_calls = resolve_calls_edges_for_files(
-        raw_edges, repo_slug, normalized_nodes, changed_files
+        raw_edges, repo_slug, normalized_nodes, changed_files, imports_by_file
     )
     calls_written = await _upsert_edges_unwind(client, resolved_calls)
     edges_upserted += calls_written
@@ -985,6 +1057,7 @@ def resolve_calls_edges_for_files(
     repo_slug: str,
     normalized_nodes: list[NormalizedNode],
     changed_files: set[str] | None = None,
+    imports: dict[str, set[str]] | None = None,
 ) -> list[tuple[NormalizedEdge, str, str]]:
     """Resolve CALLS edges, optionally scoped to a set of changed files.
 
@@ -1006,7 +1079,7 @@ def resolve_calls_edges_for_files(
     """
     if not changed_files:
         # Full resolution — pass all CALLS edges
-        return _resolve_calls_edges(raw_edges, repo_slug, normalized_nodes)
+        return _resolve_calls_edges(raw_edges, repo_slug, normalized_nodes, imports)
 
     # Scoped resolution — only emit edges whose source file changed
     scoped_edges = [
@@ -1015,4 +1088,6 @@ def resolve_calls_edges_for_files(
     ]
     # Preserve non-CALLS edges so _resolve_calls_edges ignores them correctly
     other_edges = [e for e in raw_edges if e.type != "CALLS"]
-    return _resolve_calls_edges(scoped_edges + other_edges, repo_slug, normalized_nodes)
+    return _resolve_calls_edges(
+        scoped_edges + other_edges, repo_slug, normalized_nodes, imports
+    )

@@ -195,6 +195,10 @@ def _extract_typescript(file_bytes: bytes, root_node) -> dict[str, list]:
         # Import statements
         if node.type == "import_statement":
             _process_ts_import(node, file_bytes, captures)
+        elif node.type == "export_statement":
+            _process_ts_import(node, file_bytes, captures)  # `export * from './x'` (barrels)
+        elif node.type == "call_expression":
+            _process_ts_require(node, file_bytes, captures)  # require('x') / import('x')
 
         # Class inheritance and interface implementation
         if node.type == "class_declaration":
@@ -428,6 +432,23 @@ def _process_ts_import(node, file_bytes: bytes, captures: dict[str, list]):
             "start": node.start_byte,
             "end": node.end_byte,
         })
+
+
+def _process_ts_require(node, file_bytes: bytes, captures: dict[str, list]):
+    """``require('x')`` and ``import('x')`` with a literal specifier count as imports."""
+    fn = node.child_by_field_name("function")
+    if fn is None or _text(file_bytes, fn) not in ("require", "import"):
+        return
+    args = node.child_by_field_name("arguments")
+    literal = next((c for c in (args.children if args else []) if c.type == "string"), None)
+    if literal is None:
+        return
+    captures.setdefault("import.def", []).append({
+        "text": _text(file_bytes, node),
+        "path": _text(file_bytes, literal).strip("\"'`"),
+        "start": node.start_byte,
+        "end": node.end_byte,
+    })
 
 
 def _process_ts_inheritance(node, file_bytes: bytes, captures: dict[str, list]):
