@@ -311,6 +311,75 @@ async def enrich_batch(
     return enriched_count, written_count
 
 
+_HOT_FILES = """
+MATCH (a:Artifact) WHERE a.source_id STARTS WITH $prefix
+OPTIONAL MATCH (a)-[:COUPLED]-(b:Artifact)
+OPTIONAL MATCH (a)<-[:TOUCHES]-(s)
+WITH a, count(DISTINCT b) AS coupled, count(DISTINCT s) AS touched
+WHERE coupled + touched > 0
+RETURN substring(a.source_id, size($prefix)) AS path, coupled + 3 * touched AS heat
+"""
+
+# Names defined this many times are too generic (``get``, ``map``): calls are matched by name, so
+# their caller counts are inflated and a summary would say little.
+_AMBIGUOUS_NAME = 25
+_MAX_CALLERS = 20  # beyond this, more callers stops meaning more important
+
+_AMBIGUOUS_NAMES = """
+MATCH (m) WHERE m.repo = $repo
+  AND labels(m)[0] IN ['Class', 'Function', 'Method', 'Interface', 'Enum']
+WITH m.name AS name, count(*) AS defs WHERE defs >= $threshold
+RETURN name
+"""
+
+_PRIORITY_NODES = """
+MATCH (n)
+WHERE n.repo = $repo AND n.summary IS NULL
+  AND labels(n)[0] IN ['Class', 'Function', 'Method', 'Interface', 'Enum']
+  AND NOT n.name IN $skip_names
+  AND NOT n.filePath =~ '.*(\\.test\\.|\\.spec\\.|/__tests__/|/tests?/|/test-utils/).*'
+OPTIONAL MATCH (n)<-[c:CALLS]-()
+WITH n, count(c) AS callers
+OPTIONAL MATCH (n)<-[t:TESTS]-()
+WITH n, callers, count(t) AS tests
+WITH n, CASE WHEN callers > $max_callers THEN $max_callers ELSE callers END
+       + 2 * tests + 5 * coalesce($heat[n.filePath], 0) AS score
+RETURN n, labels(n)[0] AS kind
+ORDER BY score DESC, n.id
+LIMIT $limit
+"""
+
+
+async def load_priority_nodes(
+    client: Neo4jClient, repo: str, limit: int = 500
+) -> list[NormalizedNode]:
+    """Unsummarised symbols most worth a model call, best first.
+
+    Score = callers + 2 * covering tests + 5 * the heat of the file they live in, where a
+    file's heat is how many files it changes with plus 3 per story or defect that touched it
+    (the git-history edges Assay writes). Files, test files and generic names (defined 25+ times) are skipped.
+    Returns nothing for a repo with no such symbols.
+    """
+    prefix = f"file:{repo}:"
+    try:
+        hot = await client.execute_query(_HOT_FILES, {"prefix": prefix})
+        heat = {r["path"]: int(r["heat"]) for r in hot}
+        generic = await client.execute_query(
+            _AMBIGUOUS_NAMES, {"repo": repo, "threshold": _AMBIGUOUS_NAME}
+        )
+        rows = await client.execute_query(
+            _PRIORITY_NODES,
+            {
+                "repo": repo, "limit": limit, "heat": heat, "max_callers": _MAX_CALLERS,
+                "skip_names": [r["name"] for r in generic],
+            },
+        )
+    except Exception as e:
+        logger.error(f"Failed to rank unenriched nodes: {e}")
+        return []
+    return _rows_to_nodes(rows)
+
+
 async def load_unenriched_nodes(
     client: Neo4jClient,
     repo: str | None = None,
@@ -351,6 +420,12 @@ async def load_unenriched_nodes(
         logger.error(f"Failed to load unenriched nodes: {e}")
         return []
 
+    nodes = _rows_to_nodes(rows)
+    logger.info(f"Loaded {len(nodes)} unenriched nodes")
+    return nodes
+
+
+def _rows_to_nodes(rows: list[dict]) -> list[NormalizedNode]:
     nodes = []
     for row in rows:
         props = row.get("n", {})
@@ -361,7 +436,7 @@ async def load_unenriched_nodes(
             line_range = tuple(raw_lr) if raw_lr and len(raw_lr) == 2 else None
             node = NormalizedNode(
                 id=props["id"],
-                type=props.get("type", "class").lower(),
+                type=str(props.get("type") or row.get("kind") or "class").lower(),
                 name=props.get("name", ""),
                 repo=props.get("repo", ""),
                 language=props.get("language"),
@@ -373,6 +448,4 @@ async def load_unenriched_nodes(
             nodes.append(node)
         except Exception as e:
             logger.warning(f"Could not construct node from row: {e}")
-
-    logger.info(f"Loaded {len(nodes)} unenriched nodes")
     return nodes

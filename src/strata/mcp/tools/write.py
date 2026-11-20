@@ -420,7 +420,7 @@ async def count_pending_summaries(client: Neo4jClient, repo: str) -> dict:
 
 
 async def start_refresh_summaries(
-    client: Neo4jClient, settings: Settings, repo: str, limit: int
+    client: Neo4jClient, settings: Settings, repo: str, limit: int, order: str = "priority"
 ) -> StartIngestOutput:
     """Summarise up to ``limit`` unsummarised nodes in the background; poll ``get_ingest_job``.
 
@@ -435,7 +435,11 @@ async def start_refresh_summaries(
         )
 
     async def _bg() -> None:
-        from strata.ingestion.enrichment import enrich_batch, load_unenriched_nodes
+        from strata.ingestion.enrichment import (
+            enrich_batch,
+            load_priority_nodes,
+            load_unenriched_nodes,
+        )
         from strata.providers.embedding.base import build_embedding_provider
         from strata.providers.summary.base import build_summary_provider
 
@@ -447,7 +451,10 @@ async def start_refresh_summaries(
             check = getattr(summaries, "check", None)
             if check is not None:
                 await check()  # a bad key fails here, before any node is sent
-            nodes = await load_unenriched_nodes(client, repo=repo, limit=limit)
+            if order == "priority":
+                nodes = await load_priority_nodes(client, repo, limit)
+            else:
+                nodes = await load_unenriched_nodes(client, repo=repo, limit=limit)
             job.set_total(len(nodes))
             enriched = written = 0
             if nodes:

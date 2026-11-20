@@ -606,13 +606,13 @@ def create_server(settings: Settings) -> "FastMCP":  # type: ignore[name-defined
             "Only call when the user explicitly asks to generate summaries.\n\n"
             "Summarise up to `limit` unsummarised nodes in the background and return a "
             "job_id; poll get_ingest_job (files_done/files_total = nodes done/total; notes "
-            "carry the model and tokens when finished). One active job per repo."
+            "carry the model and tokens when finished). order='priority' (default) ranks symbols by callers, covering tests and git-history heat; 'any' takes the first found. One active job per repo."
         ),
     )
-    async def start_refresh_summaries(repo: str, limit: int = 200) -> dict:
-        """Background summary run."""
+    async def start_refresh_summaries(repo: str, limit: int = 200, order: str = "priority") -> dict:
+        """Background summary run; order 'priority' ranks symbols, 'any' takes the first found."""
         await graph.connect()
-        out = await write_tools.start_refresh_summaries(graph, settings, repo, limit)
+        out = await write_tools.start_refresh_summaries(graph, settings, repo, limit, order)
         return out.model_dump()
 
     # ── delete_repo ───────────────────────────────────────────────────────────
