@@ -54,6 +54,24 @@ class LLMSummaryProvider:
             logger.error(f"{self.name} summary failed for {request.name}: {exc}")
             return fallback_response(request)
 
+    @property
+    def usage(self) -> dict[str, int]:
+        """Calls and tokens spent through this provider so far."""
+        g = self._gateway
+        return {
+            "calls": g.calls,
+            "prompt_tokens": g.prompt_tokens,
+            "completion_tokens": g.completion_tokens,
+        }
+
+    async def check(self) -> None:
+        """One tiny completion: proves the key, model and endpoint work before a paid batch.
+
+        Raises:
+            LLMError: With the provider's own reason (bad key, unknown model, no quota).
+        """
+        await self._gateway.chat([{"role": "user", "content": "Reply with the word OK."}])
+
     async def aclose(self) -> None:
         """Release gateway resources."""
         await self._gateway.aclose()

@@ -269,3 +269,34 @@ async def test_a_stale_ollama_base_url_on_a_cloud_model_is_called_out(
     await gateway.chat([{"role": "user", "content": "hi"}])
 
     assert any("clear SUMMARY__BASE_URL" in r.message for r in caplog.records)
+
+
+async def test_gateway_and_provider_report_calls_and_tokens() -> None:
+    from types import SimpleNamespace
+
+    from strata.providers.summary.llm import LLMSummaryProvider
+
+    reply = _reply("OK")
+    reply.usage = SimpleNamespace(prompt_tokens=120, completion_tokens=7)
+    settings = SummarySettings(model="anthropic/claude-haiku-5-5", api_key="k")
+    provider = LLMSummaryProvider(settings, LLMGateway(settings, AsyncMock(return_value=reply)))
+
+    await provider.check()
+    await provider.check()
+
+    assert provider.usage == {"calls": 2, "prompt_tokens": 240, "completion_tokens": 14}
+
+
+async def test_check_raises_with_the_providers_reason_so_a_bad_key_stops_a_batch() -> None:
+    from strata.providers.summary.llm import LLMSummaryProvider
+
+    class AuthenticationError(Exception):
+        pass
+
+    settings = SummarySettings(model="anthropic/claude-haiku-5-5")
+    provider = LLMSummaryProvider(
+        settings, LLMGateway(settings, AsyncMock(side_effect=AuthenticationError("bad key")))
+    )
+
+    with pytest.raises(LLMError, match="AuthenticationError"):
+        await provider.check()

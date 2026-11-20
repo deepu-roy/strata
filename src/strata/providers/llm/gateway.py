@@ -47,6 +47,9 @@ class LLMGateway:
     ) -> None:
         self._settings = settings
         self._completion_fn: CompletionFn = completion_fn or _litellm_acompletion
+        self.calls = 0
+        self.prompt_tokens = 0
+        self.completion_tokens = 0
 
     @property
     def model(self) -> str:
@@ -100,10 +103,18 @@ class LLMGateway:
                 f"{type(exc).__name__}: {exc or '(no message)'}"
             ) from exc
 
+        self._record_usage(response)
         content = _first_content(response)
         if not content:
             raise LLMError(f"empty completion from model {target!r} ({adapter.name})")
         return content
+
+    def _record_usage(self, response: Any) -> None:  # noqa: ANN401
+        """Count tokens so a run can report what it used (local models report 0 or nothing)."""
+        self.calls += 1
+        usage = getattr(response, "usage", None)
+        self.prompt_tokens += int(getattr(usage, "prompt_tokens", 0) or 0)
+        self.completion_tokens += int(getattr(usage, "completion_tokens", 0) or 0)
 
     async def aclose(self) -> None:
         """No persistent connection to close (kept for provider lifecycle symmetry)."""
