@@ -1,0 +1,134 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 420" width="860" height="420">
+  <defs>
+    <linearGradient id="strataBar" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#2ea043;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#1f6feb;stop-opacity:1"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="860" height="420" fill="#0d1117" rx="12"/>
+
+  <!-- Title -->
+  <text x="430" y="38" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="16" font-weight="600" fill="#f0f6fc" text-anchor="middle">Feature coverage vs. comparable tools</text>
+  <text x="430" y="58" font-family="-apple-system, sans-serif" font-size="11" fill="#8b949e" text-anchor="middle">● = fully supported  ◑ = partial  ○ = not supported</text>
+
+  <!-- Column headers -->
+  <text x="20"  y="88" font-family="'SF Mono', monospace" font-size="11" fill="#8b949e">Feature</text>
+  <text x="310" y="88" font-family="-apple-system, sans-serif" font-size="11" font-weight="700" fill="#2ea043" text-anchor="middle">Strata</text>
+  <text x="395" y="88" font-family="-apple-system, sans-serif" font-size="11" fill="#8b949e" text-anchor="middle">Vector DB</text>
+  <text x="480" y="88" font-family="-apple-system, sans-serif" font-size="11" fill="#8b949e" text-anchor="middle">ctags</text>
+  <text x="565" y="88" font-family="-apple-system, sans-serif" font-size="11" fill="#8b949e" text-anchor="middle">Sourcegraph</text>
+  <text x="655" y="88" font-family="-apple-system, sans-serif" font-size="11" fill="#8b949e" text-anchor="middle">LSP</text>
+  <text x="740" y="88" font-family="-apple-system, sans-serif" font-size="11" fill="#8b949e" text-anchor="middle">SonarQube</text>
+
+  <!-- Header underline -->
+  <line x1="20" y1="94" x2="840" y2="94" stroke="#30363d" stroke-width="1"/>
+
+  <!-- Data rows — y positions: 118, 148, 178, 208, 238, 268, 298, 328, 358, 388 -->
+
+  <!-- Row 1: Structural call graph -->
+  <text x="20" y="118" font-family="-apple-system, sans-serif" font-size="12" fill="#c9d1d9">Structural call graph</text>
+  <circle cx="310" cy="113" r="7" fill="#2ea043"/>
+  <circle cx="395" cy="113" r="7" fill="none" stroke="#8b949e" stroke-width="1.5"/>
+  <text x="395" y="118" font-family="sans-serif" font-size="14" fill="#8b949e" text-anchor="middle">○</text>
+  <text x="480" y="118" font-family="sans-serif" font-size="12" fill="#f0883e" text-anchor="middle">◑</text>
+  <text x="565" y="118" font-family="sans-serif" font-size="12" fill="#f0883e" text-anchor="middle">◑</text>
+  <circle cx="655" cy="113" r="7" fill="#2ea043"/>
+  <text x="740" y="118" font-family="sans-serif" font-size="12" fill="#8b949e" text-anchor="middle">○</text>
+
+  <!-- Row 2: Semantic (vector) search -->
+  <text x="20" y="148" font-family="-apple-system, sans-serif" font-size="12" fill="#c9d1d9">Semantic vector search</text>
+  <circle cx="310" cy="143" r="7" fill="#2ea043"/>
+  <circle cx="395" cy="143" r="7" fill="#2ea043"/>
+  <text x="480" y="148" font-family="sans-serif" font-size="12" fill="#8b949e" text-anchor="middle">○</text>
+  <text x="565" y="148" font-family="sans-serif" font-size="12" fill="#f0883e" text-anchor="middle">◑</text>
+  <text x="655" y="148" font-family="sans-serif" font-size="12" fill="#8b949e" text-anchor="middle">○</text>
+  <text x="740" y="148" font-family="sans-serif" font-size="12" fill="#8b949e" text-anchor="middle">○</text>
+
+  <!-- Row 3: LLM enrichment -->
+  <text x="20" y="178" font-family="-apple-system, sans-serif" font-size="12" fill="#c9d1d9">LLM summaries &amp; tags</text>
+  <circle cx="310" cy="173" r="7" fill="#2ea043"/>
+  <text x="395" y="178" font-family="sans-serif" font-size="12" fill="#8b949e" text-anchor="middle">○</text>
+  <text x="480" y="178" font-family="sans-serif" font-size="12" fill="#8b949e" text-anchor="middle">○</text>
+  <text x="565" y="178" font-family="sans-serif" font-size="12" fill="#8b949e" text-anchor="middle">○</text>
+  <text x="655" y="178" font-family="sans-serif" font-size="12" fill="#8b949e" text-anchor="middle">○</text>
+  <text x="740" y="178" font-family="sans-serif" font-size="12" fill="#8b949e" text-anchor="middle">○</text>
+
+  <!-- Row 4: MCP server -->
+  <text x="20" y="208" font-family="-apple-system, sans-serif" font-size="12" fill="#c9d1d9">Native MCP server</text>
+  <circle cx="310" cy="203" r="7" fill="#2ea043"/>
+  <text x="395" y="208" font-family="sans-serif" font-size="12" fill="#8b949e" text-anchor="middle">○</text>
+  <text x="480" y="208" font-family="sans-serif" font-size="12" fill="#8b949e" text-anchor="middle">○</text>
+  <text x="565" y="208" font-family="sans-serif" font-size="12" fill="#8b949e" text-anchor="middle">○</text>
+  <text x="655" y="208" font-family="sans-serif" font-size="12" fill="#8b949e" text-anchor="middle">○</text>
+  <text x="740" y="208" font-family="sans-serif" font-size="12" fill="#8b949e" text-anchor="middle">○</text>
+
+  <!-- Row 5: Incremental git-aware -->
+  <text x="20" y="238" font-family="-apple-system, sans-serif" font-size="12" fill="#c9d1d9">Incremental git-aware ingest</text>
+  <circle cx="310" cy="233" r="7" fill="#2ea043"/>
+  <text x="395" y="238" font-family="sans-serif" font-size="12" fill="#f0883e" text-anchor="middle">◑</text>
+  <text x="480" y="238" font-family="sans-serif" font-size="12" fill="#8b949e" text-anchor="middle">○</text>
+  <circle cx="565" cy="233" r="7" fill="#2ea043"/>
+  <circle cx="655" cy="233" r="7" fill="#2ea043"/>
+  <text x="740" y="238" font-family="sans-serif" font-size="12" fill="#8b949e" text-anchor="middle">○</text>
+
+  <!-- Row 6: Impact analysis -->
+  <text x="20" y="268" font-family="-apple-system, sans-serif" font-size="12" fill="#c9d1d9">Impact analysis (blast radius)</text>
+  <circle cx="310" cy="263" r="7" fill="#2ea043"/>
+  <text x="395" y="268" font-family="sans-serif" font-size="12" fill="#8b949e" text-anchor="middle">○</text>
+  <text x="480" y="268" font-family="sans-serif" font-size="12" fill="#8b949e" text-anchor="middle">○</text>
+  <text x="565" y="268" font-family="sans-serif" font-size="12" fill="#f0883e" text-anchor="middle">◑</text>
+  <text x="655" y="268" font-family="sans-serif" font-size="12" fill="#f0883e" text-anchor="middle">◑</text>
+  <text x="740" y="268" font-family="sans-serif" font-size="12" fill="#f0883e" text-anchor="middle">◑</text>
+
+  <!-- Row 7: Self-hosted + local LLM -->
+  <text x="20" y="298" font-family="-apple-system, sans-serif" font-size="12" fill="#c9d1d9">Self-hosted + local LLM</text>
+  <circle cx="310" cy="293" r="7" fill="#2ea043"/>
+  <text x="395" y="298" font-family="sans-serif" font-size="12" fill="#f0883e" text-anchor="middle">◑</text>
+  <circle cx="480" cy="293" r="7" fill="#2ea043"/>
+  <text x="565" y="298" font-family="sans-serif" font-size="12" fill="#f0883e" text-anchor="middle">◑</text>
+  <circle cx="655" cy="293" r="7" fill="#2ea043"/>
+  <circle cx="740" cy="293" r="7" fill="#2ea043"/>
+
+  <!-- Row 8: Multi-repo cross-repo -->
+  <text x="20" y="328" font-family="-apple-system, sans-serif" font-size="12" fill="#c9d1d9">Multi-repo cross-repo analysis</text>
+  <circle cx="310" cy="323" r="7" fill="#2ea043"/>
+  <text x="395" y="328" font-family="sans-serif" font-size="12" fill="#f0883e" text-anchor="middle">◑</text>
+  <text x="480" y="328" font-family="sans-serif" font-size="12" fill="#8b949e" text-anchor="middle">○</text>
+  <circle cx="565" cy="323" r="7" fill="#2ea043"/>
+  <text x="655" y="328" font-family="sans-serif" font-size="12" fill="#8b949e" text-anchor="middle">○</text>
+  <text x="740" y="328" font-family="sans-serif" font-size="12" fill="#f0883e" text-anchor="middle">◑</text>
+
+  <!-- Row 9: Doc-to-code linkage -->
+  <text x="20" y="358" font-family="-apple-system, sans-serif" font-size="12" fill="#c9d1d9">Doc ↔ code linkage</text>
+  <circle cx="310" cy="353" r="7" fill="#2ea043"/>
+  <text x="395" y="358" font-family="sans-serif" font-size="12" fill="#8b949e" text-anchor="middle">○</text>
+  <text x="480" y="358" font-family="sans-serif" font-size="12" fill="#8b949e" text-anchor="middle">○</text>
+  <text x="565" y="358" font-family="sans-serif" font-size="12" fill="#8b949e" text-anchor="middle">○</text>
+  <text x="655" y="358" font-family="sans-serif" font-size="12" fill="#8b949e" text-anchor="middle">○</text>
+  <text x="740" y="358" font-family="sans-serif" font-size="12" fill="#8b949e" text-anchor="middle">○</text>
+
+  <!-- Row 10: Arch layer detection -->
+  <text x="20" y="388" font-family="-apple-system, sans-serif" font-size="12" fill="#c9d1d9">Architectural layer detection</text>
+  <circle cx="310" cy="383" r="7" fill="#2ea043"/>
+  <text x="395" y="388" font-family="sans-serif" font-size="12" fill="#8b949e" text-anchor="middle">○</text>
+  <text x="480" y="388" font-family="sans-serif" font-size="12" fill="#8b949e" text-anchor="middle">○</text>
+  <text x="565" y="388" font-family="sans-serif" font-size="12" fill="#8b949e" text-anchor="middle">○</text>
+  <text x="655" y="388" font-family="sans-serif" font-size="12" fill="#8b949e" text-anchor="middle">○</text>
+  <text x="740" y="388" font-family="sans-serif" font-size="12" fill="#8b949e" text-anchor="middle">○</text>
+
+  <!-- Row dividers -->
+  <line x1="20" y1="128" x2="840" y2="128" stroke="#21262d" stroke-width="0.5"/>
+  <line x1="20" y1="158" x2="840" y2="158" stroke="#21262d" stroke-width="0.5"/>
+  <line x1="20" y1="188" x2="840" y2="188" stroke="#21262d" stroke-width="0.5"/>
+  <line x1="20" y1="218" x2="840" y2="218" stroke="#21262d" stroke-width="0.5"/>
+  <line x1="20" y1="248" x2="840" y2="248" stroke="#21262d" stroke-width="0.5"/>
+  <line x1="20" y1="278" x2="840" y2="278" stroke="#21262d" stroke-width="0.5"/>
+  <line x1="20" y1="308" x2="840" y2="308" stroke="#21262d" stroke-width="0.5"/>
+  <line x1="20" y1="338" x2="840" y2="338" stroke="#21262d" stroke-width="0.5"/>
+  <line x1="20" y1="368" x2="840" y2="368" stroke="#21262d" stroke-width="0.5"/>
+
+  <!-- Strata column highlight (subtle) -->
+  <rect x="289" y="98" width="42" height="310" fill="#2ea043" opacity="0.05" rx="4"/>
+</svg>
