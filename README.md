@@ -18,7 +18,7 @@ TypeScript / C# / Java / JS
           │  MERGE nodes & relationships (idempotent)
           ▼
   LLM summaries + embeddings
-          │  Ollama (local) or OpenAI (cloud)
+          │  Ollama (local) or a cloud model (Anthropic, OpenAI)
           ▼
   MCP server — 16 tools for AI assistants
 ```
@@ -153,7 +153,7 @@ src/strata/
 │   └── tools/write.py            # write tool implementations
 ├── providers/
 │   ├── embedding/                # sentence-transformers + OpenAI providers
-│   └── summary/                  # Ollama + OpenAI LLM providers
+│   └── summary/                  # LLM summaries via LiteLLM (Ollama, Anthropic, OpenAI, ...)
 └── eval/
     └── runner.py                 # evaluation harness (strata eval run)
 ```

@@ -244,9 +244,14 @@ async def _enrich_async(
         typer.echo(f"❌ Failed to build providers: {e}", err=True)
         raise typer.Exit(code=1)
 
-    if dry_run:
-        typer.echo("✅ Dry run: providers initialised successfully. No enrichment performed.")
-        return
+    typer.echo(f"   model: {settings.summary.model}")
+    check = getattr(summary_provider, "check", None)
+    if check is not None and not dry_run:
+        try:
+            await check()  # one tiny call, so a bad key fails here and not on every node
+        except Exception as e:
+            typer.echo(f"❌ The model did not answer: {e}", err=True)
+            raise typer.Exit(code=1)
 
     client = Neo4jClient(settings.neo4j)
     await client.connect()
@@ -261,6 +266,10 @@ async def _enrich_async(
 
         if not nodes:
             typer.echo("✅ No nodes need enrichment.")
+            return
+        if dry_run:
+            typer.echo(f"✅ Dry run: {len(nodes)} nodes would be enriched with "
+                       f"{settings.summary.model} (one call each). Nothing was sent or written.")
             return
 
         typer.echo(f"📝 Enriching {len(nodes)} nodes "
@@ -277,6 +286,10 @@ async def _enrich_async(
         typer.echo("✨ Enrichment complete!")
         typer.echo(f"   • {enriched} nodes enriched")
         typer.echo(f"   • {written} nodes written to Neo4j")
+        usage = getattr(summary_provider, "usage", None)
+        if usage:
+            typer.echo(f"   • {usage['calls']} model calls, {usage['prompt_tokens']} prompt + "
+                       f"{usage['completion_tokens']} completion tokens")
 
     except Exception as e:
         logger.error(f"Enrichment failed: {e}", exc_info=True)
