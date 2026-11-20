@@ -61,6 +61,15 @@ def pat_to_extensions(pattern: str) -> list[str]:
     return [suffix] if suffix else []
 
 
+def is_excluded(path: str, exclude_patterns: list[str] | None) -> bool:
+    """Whether ``path`` matches any exclude glob (full path, or base name for ``**/x`` forms)."""
+    for pat in exclude_patterns or []:
+        simple = pat.lstrip("*").lstrip("/")
+        if fnmatch.fnmatch(path, pat) or fnmatch.fnmatch(os.path.basename(path), simple):
+            return True
+    return False
+
+
 def collect_files(
     repo_path: Path,
     patterns: list[str],
@@ -83,7 +92,7 @@ def collect_files(
         Sorted, deduplicated list of relative paths.
     """
     if explicit_files is not None:
-        return sorted(set(explicit_files))
+        return sorted(f for f in set(explicit_files) if not is_excluded(f, exclude_patterns))
 
     # Extract just the extensions we care about from patterns like "**/*.ts"
     extensions: set[str] = set()
@@ -109,10 +118,7 @@ def collect_files(
                 seen.add(rel)
 
     # Apply user-supplied exclude globs against the collected paths
-    for pat in (exclude_patterns or []):
-        # Strip leading **/ for fnmatch directory-agnostic matching
-        simple = pat.lstrip("*").lstrip("/")
-        seen = {f for f in seen if not fnmatch.fnmatch(f, pat) and not fnmatch.fnmatch(os.path.basename(f), simple)}
+    seen = {f for f in seen if not is_excluded(f, exclude_patterns)}
 
     return sorted(seen)
 

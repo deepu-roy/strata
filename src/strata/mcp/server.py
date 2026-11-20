@@ -43,6 +43,7 @@ def _ingest_input(
     branch: str,
     force_full: bool,
     patterns: list[str] | None,
+    exclude_patterns: list[str] | None = None,
 ) -> IngestRepoInput:
     return IngestRepoInput(
         repo_url=repo_url,
@@ -52,6 +53,7 @@ def _ingest_input(
         branch=branch,
         force_full=force_full,
         patterns=patterns or list(_DEFAULT_PATTERNS),
+        exclude_patterns=exclude_patterns or [],
     )
 
 
@@ -462,11 +464,12 @@ def create_server(settings: Settings) -> "FastMCP":  # type: ignore[name-defined
         branch: str = "main",
         force_full: bool = False,
         patterns: list[str] | None = None,
+        exclude_patterns: list[str] | None = None,
     ) -> dict:
         """Ingest or incrementally update a repository."""
         await graph.connect()
         inp = _ingest_input(repo_url, repo_slug, commit_sha, base_commit_sha,
-                            branch, force_full, patterns)
+                            branch, force_full, patterns, exclude_patterns)
         result = await write_tools.ingest_repo(graph, settings, inp)
         return result.model_dump()
 
@@ -492,11 +495,12 @@ def create_server(settings: Settings) -> "FastMCP":  # type: ignore[name-defined
         base_commit_sha: str | None = None,
         force_full: bool = False,
         patterns: list[str] | None = None,
+        exclude_patterns: list[str] | None = None,
     ) -> dict:
         """Start a background ingest job."""
         await graph.connect()
         inp = _ingest_input(repo_url, repo_slug, commit_sha, base_commit_sha,
-                            branch, force_full, patterns)
+                            branch, force_full, patterns, exclude_patterns)
         result = await write_tools.start_ingest_repo(graph, settings, inp)
         return result.model_dump()
 
@@ -528,12 +532,14 @@ def create_server(settings: Settings) -> "FastMCP":  # type: ignore[name-defined
         repo_slug: str,
         branch: str = "main",
         patterns: list[str] | None = None,
+        exclude_patterns: list[str] | None = None,
     ) -> dict:
         """Report what changed upstream since the last ingest."""
         await graph.connect()
         inp = CheckRepoChangesInput(
             repo_url=repo_url, repo_slug=repo_slug, branch=branch,
             patterns=patterns or list(_DEFAULT_PATTERNS),
+            exclude_patterns=exclude_patterns or [],
         )
         result = await change_tools.check_repo_changes(graph, settings, inp)
         return result.model_dump()
