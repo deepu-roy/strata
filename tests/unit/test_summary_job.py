@@ -33,6 +33,7 @@ async def _run(monkeypatch, summaries, nodes, enrich):
     monkeypatch.setattr("strata.providers.summary.base.build_summary_provider", lambda _s: summaries)
     monkeypatch.setattr("strata.providers.embedding.base.build_embedding_provider", lambda _s: object())
     monkeypatch.setattr("strata.ingestion.enrichment.load_unenriched_nodes", AsyncMock(return_value=nodes))
+    monkeypatch.setattr("strata.ingestion.enrichment.load_priority_nodes", AsyncMock(return_value=nodes))
     monkeypatch.setattr("strata.ingestion.enrichment.enrich_batch", enrich)
     out = await write_mod.start_refresh_summaries(MagicMock(), _settings(), "r-%d" % id(nodes), 10)
     while write_mod.get_ingest_job(out.job_id).status in ("queued", "running"):
@@ -67,3 +68,36 @@ async def test_count_pending_summaries():
     client.execute_query = AsyncMock(return_value=[{"pending": 42}])
 
     assert await write_mod.count_pending_summaries(client, "logto") == {"repo": "logto", "pending": 42}
+
+
+async def test_priority_loader_passes_file_heat_and_builds_typed_nodes():
+    from strata.ingestion.enrichment import load_priority_nodes
+
+    calls = []
+
+    async def run(query, params=None):
+        calls.append(params)
+        if "COUPLED" in query:
+            return [{"path": "a/hot.ts", "heat": 7}]
+        if "defs" in query:
+            return [{"name": "get"}]
+        return [{"n": {"id": "f1", "name": "run", "repo": "r", "filePath": "a/hot.ts"}, "kind": "Function"}]
+
+    client = MagicMock()
+    client.execute_query = run
+
+    nodes = await load_priority_nodes(client, "r", 5)
+
+    assert calls[0] == {"prefix": "file:r:"}
+    assert calls[2]["heat"] == {"a/hot.ts": 7} and calls[2]["limit"] == 5
+    assert calls[2]["skip_names"] == ["get"]
+    assert [(n.id, n.type) for n in nodes] == [("f1", "function")]
+
+
+async def test_priority_loader_returns_nothing_when_the_graph_errors():
+    from strata.ingestion.enrichment import load_priority_nodes
+
+    client = MagicMock()
+    client.execute_query = AsyncMock(side_effect=RuntimeError("down"))
+
+    assert await load_priority_nodes(client, "r", 5) == []
