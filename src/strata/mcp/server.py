@@ -587,6 +587,34 @@ def create_server(settings: Settings) -> "FastMCP":  # type: ignore[name-defined
         )
         return await write_tools.refresh_summaries(graph, settings, inp)
 
+    # ── start_refresh_summaries / count_pending_summaries ─────────────────────
+
+    @mcp.tool(
+        description=(
+            "ADMIN TOOL, read-only: how many nodes of a repo have no LLM summary yet. "
+            "Use before start_refresh_summaries to size the run."
+        ),
+    )
+    async def count_pending_summaries(repo: str) -> dict:
+        """Nodes without a summary."""
+        await graph.connect()
+        return await write_tools.count_pending_summaries(graph, repo)
+
+    @mcp.tool(
+        description=(
+            "⚠️ ADMIN TOOL — TRIGGERS PAID LLM CALLS (one per node) AND MODIFIES THE GRAPH. "
+            "Only call when the user explicitly asks to generate summaries.\n\n"
+            "Summarise up to `limit` unsummarised nodes in the background and return a "
+            "job_id; poll get_ingest_job (files_done/files_total = nodes done/total; notes "
+            "carry the model and tokens when finished). One active job per repo."
+        ),
+    )
+    async def start_refresh_summaries(repo: str, limit: int = 200) -> dict:
+        """Background summary run."""
+        await graph.connect()
+        out = await write_tools.start_refresh_summaries(graph, settings, repo, limit)
+        return out.model_dump()
+
     # ── delete_repo ───────────────────────────────────────────────────────────
 
     @mcp.tool(

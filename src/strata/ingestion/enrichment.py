@@ -222,6 +222,7 @@ async def enrich_batch(
     max_concurrent: int = 1,
     source_path: str | None = None,
     write_batch_size: int = 20,
+    progress=None,
 ) -> tuple[int, int]:
     """Enrich a list of nodes and persist results to Neo4j.
 
@@ -245,6 +246,7 @@ async def enrich_batch(
             If None, looked up from :Repo.source_path in the graph.
         write_batch_size: How many enriched nodes to flush to Neo4j at once.
             20 is a safe default; raise to 50 for fast remote Neo4j instances.
+        progress: Optional progress sink; ``file_done()`` is called as each node finishes.
 
     Returns:
         Tuple of (enriched_count, written_count).
@@ -278,7 +280,11 @@ async def enrich_batch(
             node.code_snippet = _read_code_from_file(
                 source_path or "", node.file_path, node.line_range
             )
-            return await enrich_node(node, summary_provider, embedding_provider)
+            try:
+                return await enrich_node(node, summary_provider, embedding_provider)
+            finally:
+                if progress is not None:
+                    progress.file_done(1)
 
     # Run all enrichments concurrently (but bounded by semaphore)
     enriched_nodes = await asyncio.gather(*[_enrich_one(n) for n in nodes])
