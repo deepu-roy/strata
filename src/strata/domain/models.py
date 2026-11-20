@@ -253,7 +253,7 @@ class IngestJobSnapshot(BaseModel):
     job_id: str
     repo_slug: str
     status: Literal["queued", "running", "completed", "failed"]
-    phase: Literal["queued", "cloning", "parsing", "upserting", "cleanup", "done"]
+    phase: Literal["queued", "cloning", "parsing", "upserting", "cleanup", "mapping_tests", "summarising", "done"]
     files_total: int = 0
     files_done: int = 0
     nodes_added: int = 0

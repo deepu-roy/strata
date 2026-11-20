@@ -405,6 +405,77 @@ async def refresh_summaries(
     return {"status": "completed", "enriched": enriched, "written": written}
 
 
+# ── start_refresh_summaries / count_pending_summaries ────────────────────────
+
+
+async def count_pending_summaries(client: Neo4jClient, repo: str) -> dict:
+    """How many nodes of ``repo`` have no summary yet (what an enrich run would work on)."""
+    rows = await client.execute_query(
+        "MATCH (n) WHERE n.repo = $repo AND n.summary IS NULL "
+        "AND labels(n)[0] IN ['Class', 'Function', 'Method', 'Interface', 'File', 'Enum'] "
+        "RETURN count(n) AS pending",
+        {"repo": repo},
+    )
+    return {"repo": repo, "pending": int(rows[0]["pending"]) if rows else 0}
+
+
+async def start_refresh_summaries(
+    client: Neo4jClient, settings: Settings, repo: str, limit: int
+) -> StartIngestOutput:
+    """Summarise up to ``limit`` unsummarised nodes in the background; poll ``get_ingest_job``.
+
+    One active job per repo. The job reports nodes done of nodes total, and on completion a
+    note with the model calls and tokens used. A model that does not answer fails the job
+    before any node is processed.
+    """
+    job, created = REGISTRY.start(f"{repo}#summaries")
+    if not created:
+        return StartIngestOutput(
+            job_id=job.job_id, status=job.status, already_running=True  # type: ignore[arg-type]
+        )
+
+    async def _bg() -> None:
+        from strata.ingestion.enrichment import enrich_batch, load_unenriched_nodes
+        from strata.providers.embedding.base import build_embedding_provider
+        from strata.providers.summary.base import build_summary_provider
+
+        job.status = "running"
+        try:
+            job.set_phase("summarising")
+            summaries = build_summary_provider(settings.summary)
+            embeddings = build_embedding_provider(settings.embedding)
+            check = getattr(summaries, "check", None)
+            if check is not None:
+                await check()  # a bad key fails here, before any node is sent
+            nodes = await load_unenriched_nodes(client, repo=repo, limit=limit)
+            job.set_total(len(nodes))
+            enriched = written = 0
+            if nodes:
+                enriched, written = await enrich_batch(
+                    nodes, summary_provider=summaries, embedding_provider=embeddings,
+                    client=client, max_concurrent=settings.summary.max_concurrent, progress=job,
+                )
+            job.nodes_modified = written
+            usage = getattr(summaries, "usage", None)
+            job.note(f"model: {settings.summary.model}")
+            job.note(f"{enriched} summarised, {written} written")
+            if usage:
+                job.note(
+                    f"{usage['calls']} model calls, {usage['prompt_tokens']} prompt + "
+                    f"{usage['completion_tokens']} completion tokens"
+                )
+            job.finish("completed")
+        except BaseException as e:  # never leave a job "running"
+            job.finish("failed", errors=[redact(f"{type(e).__name__}: {e}")])
+            if not isinstance(e, Exception):
+                raise
+
+    task = asyncio.create_task(_bg())
+    _BACKGROUND_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_TASKS.discard)
+    return StartIngestOutput(job_id=job.job_id, status="queued", already_running=False)
+
+
 # ── delete_repo ───────────────────────────────────────────────────────────────
 
 
